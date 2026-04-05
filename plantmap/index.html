@@ -152,7 +152,7 @@
         rgba(240, 236, 228, 0.2) 30%,
         transparent 60%
       );
-      pointer-events: none; /* Let scroll/drag pass through to map */
+      pointer-events: auto;
     }
 
     /* Corner tick marks */
@@ -880,7 +880,7 @@
     #sound-toggle:hover { border-color: var(--green); }
   </style>
 </head>
-<body>
+<body class="dark">
 
   <!-- MAP -->
   <div id="map"></div>
@@ -1039,9 +1039,6 @@
     /* ─── MAP INIT ─── */
     mapboxgl.accessToken = CONFIG.MAPBOX_TOKEN;
 
-    // Apply dark theme by default
-    document.body.classList.add('dark');
-
     const map = new mapboxgl.Map({
       container:  'map',
       style:      'mapbox://styles/mapbox/satellite-streets-v12',
@@ -1067,15 +1064,6 @@
     }
     startGlobeRotation();
 
-    // Stop rotation when user interacts with the map (scroll-zoom, drag)
-    map.on('mousedown', () => { if (AppState.phase === 'globe') stopGlobeRotation(); });
-    map.on('wheel', () => { if (AppState.phase === 'globe') stopGlobeRotation(); });
-    map.on('touchstart', () => { if (AppState.phase === 'globe') stopGlobeRotation(); });
-    // Restart rotation when interaction ends (if still on globe)
-    map.on('moveend', () => {
-      if (AppState.phase === 'globe' && !rotationTimer) startGlobeRotation();
-    });
-
     // Start BGM on page load (needs user gesture — also retried on first click)
     initBGM();
     setupLoopPoint();
@@ -1092,7 +1080,7 @@
     map.on('style.load', () => {
       AppState.mapReady = true;
 
-      // Dark atmosphere — default satellite/dark style
+      // Dark atmosphere — space-like default
       map.setFog({
         color:            'rgb(20, 20, 30)',
         'high-color':     'rgb(36, 92, 223)',
@@ -1132,7 +1120,41 @@
       }
     }
 
-    // Globe side has pointer-events: none — scroll/drag passes through to map
+    // Scroll-to-zoom: forward wheel events to the map so users can zoom into the globe
+    document.querySelector('.intro-globe-side').addEventListener('wheel', (e) => {
+      e.preventDefault();
+      // Stop globe rotation on first scroll
+      stopGlobeRotation();
+
+      // Forward scroll to map zoom
+      const currentZoom = map.getZoom();
+      const delta = -e.deltaY * 0.002; // positive scroll-up = zoom in
+      const newZoom = Math.max(1, Math.min(currentZoom + delta, 20));
+      map.easeTo({ zoom: newZoom, duration: 100 });
+
+      // Once zoomed in enough, prompt for location
+      if (newZoom >= 4 && !introInteracted) {
+        handleIntroEnter();
+      }
+    }, { passive: false });
+
+    // Swipe up on globe side — also zooms in
+    let touchStartY = 0;
+    document.querySelector('.intro-globe-side').addEventListener('touchstart', (e) => {
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    document.querySelector('.intro-globe-side').addEventListener('touchend', (e) => {
+      const swipeDist = touchStartY - e.changedTouches[0].clientY;
+      if (swipeDist > 40) {
+        stopGlobeRotation();
+        const currentZoom = map.getZoom();
+        const newZoom = Math.min(currentZoom + 2, 20);
+        map.easeTo({ zoom: newZoom, duration: 600 });
+        if (newZoom >= 4 && !introInteracted) {
+          handleIntroEnter();
+        }
+      }
+    }, { passive: true });
 
     /* ─── LOCATION FLOW ─── */
     document.getElementById('allow-location-btn').addEventListener('click', () => {
@@ -1579,7 +1601,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
 
     /* ─── RESET ─── */
     function resetToGlobe() {
-      // Reset theme to light if needed
+      // Reset theme to dark (default) if needed
       if (currentStyleKey !== 'dark') {
         switchTheme('dark');
       }
