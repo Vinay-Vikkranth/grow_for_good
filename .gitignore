@@ -1,0 +1,12 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+
+# Claude
+.claude/
+
+# Local config with real tokens
+plantmap/config.js
