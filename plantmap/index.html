@@ -1064,10 +1064,18 @@
     }
     startGlobeRotation();
 
-    // Start BGM as soon as the page loads
+    // Start BGM on page load (needs user gesture — also retried on first click)
     initBGM();
     setupLoopPoint();
-    if (!NatureEngine.audioMuted) fadeAudioIn();
+    function tryPlayBGM() {
+      if (!NatureEngine.audioMuted) fadeAudioIn();
+      document.removeEventListener('click', tryPlayBGM);
+      document.removeEventListener('touchstart', tryPlayBGM);
+    }
+    // Attempt autoplay immediately; if blocked, retry on first interaction
+    tryPlayBGM();
+    document.addEventListener('click', tryPlayBGM, { once: false });
+    document.addEventListener('touchstart', tryPlayBGM, { once: false });
 
     map.on('style.load', () => {
       AppState.mapReady = true;
@@ -1579,6 +1587,10 @@ For the "model" field use one of: oak, pine, maple, sapling`;
         switchTheme('light');
       }
       stopNatureEffects();
+      // Restart BGM for globe/intro screen
+      initBGM();
+      setupLoopPoint();
+      if (!NatureEngine.audioMuted) fadeAudioIn();
       AppState.placedTrees.forEach(({layerId}) => { try { if(map.getLayer(layerId)) map.removeLayer(layerId); } catch{} });
       AppState.placedTrees = [];
       document.getElementById('trees-planted-count').textContent = '0 TREES PLACED';
@@ -1599,8 +1611,6 @@ For the "model" field use one of: oak, pine, maple, sapling`;
         document.getElementById('city-search-wrap').classList.remove('visible');
         document.getElementById('city-input').value = '';
         startGlobeRotation();
-        // Restart BGM on the globe screen
-        if (!NatureEngine.audioMuted) fadeAudioIn();
       }, 2600);
     }
 
@@ -1712,16 +1722,17 @@ For the "model" field use one of: oak, pine, maple, sapling`;
         fadeAudioOut();
       } else {
         btn.textContent = '🔊';
-        fadeAudioIn();
+        if (AppState.phase === 'globe' || NatureEngine.active) fadeAudioIn();
       }
     }
 
     // When the track ends, restart from 22s for seamless looping
     function setupLoopPoint() {
       const audio = NatureEngine.bgm;
-      if (!audio) return;
+      if (!audio || audio._loopSetup) return;
+      audio._loopSetup = true;
       audio.addEventListener('ended', () => {
-        if (!NatureEngine.audioMuted) {
+        if (!NatureEngine.audioMuted && AppState.phase === 'globe') {
           audio.currentTime = 22;
           audio.play().catch(() => {});
         }
