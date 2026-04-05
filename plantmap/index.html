@@ -855,29 +855,6 @@
       will-change: transform;
     }
 
-    /* ── Sound toggle ── */
-    #sound-toggle {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 200;
-      width: 44px;
-      height: 44px;
-      background: var(--bg-panel);
-      border: 1px solid var(--border);
-      backdrop-filter: blur(14px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.1rem;
-      clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
-      transition: background 0.2s, border-color 0.2s, opacity 0.5s;
-      opacity: 0;
-      pointer-events: none;
-      cursor: pointer;
-    }
-    #sound-toggle.visible { opacity: 1; pointer-events: auto; }
-    #sound-toggle:hover { border-color: var(--green); }
   </style>
 </head>
 <body class="dark">
@@ -887,9 +864,6 @@
 
   <!-- NATURE OVERLAY (birds + clouds) -->
   <div id="nature-overlay"></div>
-
-  <!-- SOUND TOGGLE -->
-  <button id="sound-toggle" onclick="toggleAmbientSound()" title="Toggle ambient sounds">🔇</button>
 
   <!-- INTRO SCREEN -->
   <div id="intro-screen">
@@ -1203,9 +1177,6 @@
       AppState.phase = 'flying';
       stopGlobeRotation();
       document.getElementById('intro-screen').classList.add('exiting');
-
-      // Fade out BGM as we zoom in
-      fadeAudioOut();
 
       // Smooth single continuous fly-to with cinematic curve
       map.flyTo({
@@ -1613,10 +1584,6 @@ For the "model" field use one of: oak, pine, maple, sapling`;
         switchTheme('dark');
       }
       stopNatureEffects();
-      // Restart BGM for globe/intro screen
-      initBGM();
-      setupLoopPoint();
-      if (!NatureEngine.audioMuted) fadeAudioIn();
       AppState.placedTrees.forEach(({layerId}) => { try { if(map.getLayer(layerId)) map.removeLayer(layerId); } catch{} });
       AppState.placedTrees = [];
       document.getElementById('trees-planted-count').textContent = '0 TREES PLACED';
@@ -1659,8 +1626,6 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       active: false,
       clouds: [],
       cloudTimer: null,
-      bgm: null,
-      audioMuted: false,
     };
 
     /* ─── SPAWN CLOUD WISPS ─── */
@@ -1712,75 +1677,11 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       cloudRAF = requestAnimationFrame(animateClouds);
     }
 
-    /* ─── BGM AUDIO (MP3 — starts at 22s, loops) ─── */
-    function initBGM() {
-      if (NatureEngine.bgm) return;
-      const audio = new Audio('assets/bgm.mp3');
-      audio.loop = false; // We handle looping manually to restart from 22s
-      audio.volume = 0;
-      NatureEngine.bgm = audio;
-    }
-
-    function fadeAudioIn() {
-      const audio = NatureEngine.bgm;
-      if (!audio || NatureEngine.audioMuted) return;
-      audio.currentTime = 22;
-      audio.play().catch(() => {});
-      // Smooth fade in over 3s to a very mild level
-      audio.volume = 0;
-      let v = 0;
-      const target = 0.03;
-      const fade = setInterval(() => {
-        v = Math.min(v + 0.001, target);
-        audio.volume = v;
-        if (v >= target) clearInterval(fade);
-      }, 60);
-      NatureEngine._fadeIn = fade;
-    }
-
-    function fadeAudioOut() {
-      const audio = NatureEngine.bgm;
-      if (!audio) return;
-      if (NatureEngine._fadeIn) clearInterval(NatureEngine._fadeIn);
-      let v = audio.volume;
-      const fade = setInterval(() => {
-        v = Math.max(v - 0.025, 0);
-        audio.volume = v;
-        if (v <= 0) { clearInterval(fade); audio.pause(); }
-      }, 60);
-    }
-
-    function toggleAmbientSound() {
-      NatureEngine.audioMuted = !NatureEngine.audioMuted;
-      const btn = document.getElementById('sound-toggle');
-      if (NatureEngine.audioMuted) {
-        btn.textContent = '🔇';
-        fadeAudioOut();
-      } else {
-        btn.textContent = '🔊';
-        if (AppState.phase === 'globe' || NatureEngine.active) fadeAudioIn();
-      }
-    }
-
-    // When the track ends, restart from 22s for seamless looping
-    function setupLoopPoint() {
-      const audio = NatureEngine.bgm;
-      if (!audio || audio._loopSetup) return;
-      audio._loopSetup = true;
-      audio.addEventListener('ended', () => {
-        if (!NatureEngine.audioMuted && AppState.phase === 'globe') {
-          audio.currentTime = 22;
-          audio.play().catch(() => {});
-        }
-      });
-    }
-
     /* ─── START / STOP NATURE ─── */
     function startNatureEffects() {
       if (NatureEngine.active) return;
       NatureEngine.active = true;
       document.getElementById('nature-overlay').classList.add('active');
-      document.getElementById('sound-toggle').classList.add('visible');
 
       // Spawn initial clouds
       for (let i = 0; i < 3; i++) setTimeout(() => spawnCloud(), i * 800);
@@ -1792,17 +1693,11 @@ For the "model" field use one of: oak, pine, maple, sapling`;
 
       // Start cloud animation
       cloudRAF = requestAnimationFrame(animateClouds);
-
-      // Sound toggle icon
-      if (!NatureEngine.audioMuted) {
-        document.getElementById('sound-toggle').textContent = '🔊';
-      }
     }
 
     function stopNatureEffects() {
       NatureEngine.active = false;
       document.getElementById('nature-overlay').classList.remove('active');
-      document.getElementById('sound-toggle').classList.remove('visible');
 
       if (NatureEngine.cloudTimer) { clearInterval(NatureEngine.cloudTimer); NatureEngine.cloudTimer = null; }
       if (cloudRAF) { cancelAnimationFrame(cloudRAF); cloudRAF = null; }
@@ -1810,22 +1705,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       // Clean up cloud elements
       NatureEngine.clouds.forEach(c => c.el.remove());
       NatureEngine.clouds = [];
-
-      fadeAudioOut();
     }
-
-    // Start BGM on page load (needs user gesture — also retried on first click)
-    initBGM();
-    setupLoopPoint();
-    function tryPlayBGM() {
-      if (!NatureEngine.audioMuted) fadeAudioIn();
-      document.removeEventListener('click', tryPlayBGM);
-      document.removeEventListener('touchstart', tryPlayBGM);
-    }
-    // Attempt autoplay immediately; if blocked, retry on first interaction
-    tryPlayBGM();
-    document.addEventListener('click', tryPlayBGM, { once: false });
-    document.addEventListener('touchstart', tryPlayBGM, { once: false });
 
   </script>
 </body>
