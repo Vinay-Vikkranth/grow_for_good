@@ -1379,6 +1379,7 @@
       MAPBOX_TOKEN:    '',
       ANTHROPIC_KEY:   '',
       ANTHROPIC_MODEL: 'claude-sonnet-4-20250514',
+      BACKEND_URL:     '',
       OLLAMA_URL:      'http://localhost:11434',
       OLLAMA_MODEL:    'llava',
       APP_VERSION:     '1.0.0'
@@ -2041,20 +2042,19 @@
       showToast(`MAPPED ${features.length} ZONES — FETCHING PLANT SUGGESTIONS...`);
 
       // ── Step 9: One Claude call → regional plant recommendations ──
-      if (!CONFIG.ANTHROPIC_KEY) {
+      if (!CONFIG.ANTHROPIC_KEY && !CONFIG.BACKEND_URL) {
         showToast(`${features.length} ZONES MAPPED — CLICK ANY ZONE TO EXPLORE`);
         return;
       }
       try {
         const imgB64 = satCanvas.toDataURL('image/jpeg', 0.75).split(',')[1];
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
+        const aiUrl = CONFIG.BACKEND_URL ? `${CONFIG.BACKEND_URL}/api/chat` : 'https://api.anthropic.com/v1/messages';
+        const aiHeaders = CONFIG.BACKEND_URL
+          ? { 'Content-Type': 'application/json' }
+          : { 'Content-Type': 'application/json', 'x-api-key': CONFIG.ANTHROPIC_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
+        const res = await fetch(aiUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': CONFIG.ANTHROPIC_KEY,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true'
-          },
+          headers: aiHeaders,
           body: JSON.stringify({
             model: CONFIG.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
             max_tokens: 1500,
@@ -3258,16 +3258,15 @@ For "model" field, pick the BEST visual match for this specific plant from: oak,
       try {
         let result;
 
-        if (CONFIG.ANTHROPIC_KEY) {
-          // ── Use Anthropic Claude API ──
-          const response = await fetch('https://api.anthropic.com/v1/messages', {
+        if (CONFIG.ANTHROPIC_KEY || CONFIG.BACKEND_URL) {
+          // ── Use backend proxy (production) or direct Anthropic API (local) ──
+          const aiUrl = CONFIG.BACKEND_URL ? `${CONFIG.BACKEND_URL}/api/chat` : 'https://api.anthropic.com/v1/messages';
+          const aiHeaders = CONFIG.BACKEND_URL
+            ? { 'Content-Type': 'application/json' }
+            : { 'Content-Type': 'application/json', 'x-api-key': CONFIG.ANTHROPIC_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
+          const response = await fetch(aiUrl, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': CONFIG.ANTHROPIC_KEY,
-              'anthropic-version': '2023-06-01',
-              'anthropic-dangerous-direct-browser-access': 'true'
-            },
+            headers: aiHeaders,
             body: JSON.stringify({
               model: CONFIG.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
               max_tokens: 2048,
