@@ -522,6 +522,26 @@
       color: rgba(255,255,255,0.45);
       letter-spacing: 0.1em;
     }
+    /* Scan line sweeping effect */
+    .scan-sweep {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--green), transparent);
+      z-index: 301;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .scan-sweep.active {
+      opacity: 1;
+      animation: sweepDown 2.5s ease-in-out infinite;
+    }
+    @keyframes sweepDown {
+      0%   { top: 0; }
+      50%  { top: 100%; }
+      50.1%{ top: 0; }
+      100% { top: 100%; }
+    }
 
     /* ─── ACTION CARD in sidebar ─── */
     .action-card {
@@ -587,19 +607,18 @@
       font-weight: 700;
     }
 
-    /* ─── AI-DETECTED SPOTS ─── */
-    .ai-spot-marker {
-      width: 22px; height: 22px;
-      background: rgba(122, 205, 95, 0.6);
-      border: 2px solid #7acd5f;
-      border-radius: 50%;
-      box-shadow: 0 0 12px rgba(122, 205, 95, 0.5);
-      cursor: pointer;
-      animation: spotPulse 2s ease-in-out infinite;
-    }
-    @keyframes spotPulse {
-      0%, 100% { box-shadow: 0 0 12px rgba(122, 205, 95, 0.4); transform: scale(1); }
-      50%      { box-shadow: 0 0 24px rgba(122, 205, 95, 0.7); transform: scale(1.15); }
+    /* ─── AI-DETECTED ZONE LABELS ─── */
+    .ai-zone-label {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #fff;
+      background: rgba(34, 197, 94, 0.85);
+      padding: 3px 8px;
+      border-radius: 2px;
+      white-space: nowrap;
+      pointer-events: none;
     }
 
     .nav-right { display: flex; align-items: center; gap: 10px; }
@@ -1135,9 +1154,10 @@
   <!-- AI SCAN OVERLAY -->
   <div id="ai-scan-overlay">
     <div class="scan-ring"></div>
-    <div class="scan-label">AI ANALYZING SATELLITE VIEW</div>
-    <div class="scan-sublabel">Detecting green spaces & planting opportunities...</div>
+    <div class="scan-label" id="scan-status-label">AI ANALYZING SATELLITE VIEW</div>
+    <div class="scan-sublabel" id="scan-status-sub">Freezing map view & capturing satellite imagery...</div>
   </div>
+  <div class="scan-sweep" id="scan-sweep"></div>
 
   <!-- BOTTOM HINT -->
   <div id="hint-text">SCROLL / PINCH TO EXPLORE &nbsp;·&nbsp; CLICK ZONES OR ANYWHERE TO ANALYZE &amp; PLANT</div>
@@ -1579,13 +1599,18 @@
       await Promise.allSettled([overpassPromise, aiScanPromise]);
     }
 
-    /* ─── AI SATELLITE GREEN DETECTION ─── */
-    let aiSpotMarkers = [];
+    /* ═══════════════════════════════════════════
+       AI SATELLITE VISION SCANNER
+       Freezes the map → captures satellite view → AI detects planting areas
+       → draws precise polygon shapes on the map
+    ═══════════════════════════════════════════ */
+
+    let aiScanLayersAdded = false;
+    let aiScanClickBound = false;
 
     function captureMapCanvas() {
       const canvas = map.getCanvas();
-      // Create a smaller version for faster AI processing
-      const maxDim = 512;
+      const maxDim = 768;
       const scale = Math.min(maxDim / canvas.width, maxDim / canvas.height, 1);
       const w = Math.round(canvas.width * scale);
       const h = Math.round(canvas.height * scale);
@@ -1595,35 +1620,75 @@
       const ctx = offscreen.getContext('2d');
       ctx.drawImage(canvas, 0, 0, w, h);
       return {
-        base64: offscreen.toDataURL('image/jpeg', 0.85).split(',')[1],
+        base64: offscreen.toDataURL('image/jpeg', 0.9).split(',')[1],
         width: canvas.width,
         height: canvas.height
       };
     }
 
+    function setScanStatus(label, sub) {
+      document.getElementById('scan-status-label').textContent = label;
+      document.getElementById('scan-status-sub').textContent = sub;
+    }
+
     async function aiScanSatelliteView() {
       const overlay = document.getElementById('ai-scan-overlay');
+      const sweep = document.getElementById('scan-sweep');
+      const scanBtn = document.getElementById('scan-btn');
+
       overlay.classList.add('active');
+      sweep.classList.add('active');
+      scanBtn.classList.add('scanning');
+      scanBtn.textContent = '⏳ AI SCANNING...';
+
+      setScanStatus('FREEZING MAP VIEW', 'Capturing satellite imagery...');
 
       try {
-        const { base64, width, height } = captureMapCanvas();
+        // Step 1: Freeze the map and capture bounds
         const bounds = map.getBounds();
-        const center = map.getCenter();
+        const frozenBounds = {
+          west: bounds.getWest(),
+          east: bounds.getEast(),
+          north: bounds.getNorth(),
+          south: bounds.getSouth()
+        };
 
-        const prompt = `You are an urban forestry AI analyzing a satellite/aerial view of a city.
-Look at this satellite image and identify ALL potential planting sites — anywhere trees, shrubs, or plants could be added.
-Look for: empty grass patches between buildings, bare dirt areas, wide sidewalk strips, parking lot islands, median strips, rooftop gardens, abandoned lots, unmaintained patches of land, gaps in tree canopy.
-For EACH site you find, estimate its position as a percentage from the top-left corner (x% from left, y% from top).
-Also assess:
-- type: one of "grass_patch", "bare_soil", "sidewalk_strip", "parking_island", "median", "rooftop", "vacant_lot", "tree_gap"
-- size: "small", "medium", "large"
-- plantability: 1-10 score
-- suggestion: one short sentence about what could be planted
-- needs_donation: true if it looks like it needs funding/community effort, false if a person could just plant there
+        // Step 2: Capture the canvas
+        await new Promise(r => setTimeout(r, 300)); // let the map settle
+        const { base64 } = captureMapCanvas();
 
-Return ONLY valid JSON array — no markdown, no explanation:
-[{"x":45,"y":32,"type":"grass_patch","size":"medium","plantability":8,"suggestion":"Perfect spot for a shade tree like Red Maple","needs_donation":false}, ...]
-Find at least 3-8 sites. Be thorough.`;
+        setScanStatus('AI ANALYZING TERRAIN', 'Detecting plantable areas with computer vision...');
+
+        // Step 3: Send to Ollama with polygon-detection prompt
+        const prompt = `You are an expert urban forestry computer vision system analyzing a satellite/aerial view.
+
+TASK: Identify every potential planting area in this image — places where trees, shrubs, or vegetation could be planted or improved.
+
+For EACH planting area, provide its PRECISE BOUNDARY as a polygon with corner points.
+Each corner point is given as (x%, y%) — percentages from the top-left corner of the image.
+
+What to look for:
+- Green grass patches between buildings (these often have room for more trees)
+- Bare dirt or brown earth areas
+- Wide sidewalk buffer strips along roads
+- Parking lot islands and medians
+- Empty courtyards or plazas
+- Gaps in tree canopy where more trees could fit
+- Unmaintained or sparse vegetation areas
+- Road medians and dividers with soil
+
+For each area give:
+- "points": array of [x,y] percentage pairs forming the polygon boundary (at least 4 points, trace the shape accurately)
+- "label": a short descriptive name (e.g. "Courtyard Grass Area", "Parking Strip", "Bare Patch Near Road")
+- "type": one of "grass_patch", "bare_soil", "sidewalk_strip", "parking_island", "median", "courtyard", "vacant_lot", "tree_gap", "garden_bed"
+- "plantability": 1-10 score
+- "suggestion": one specific sentence on what to plant (species name + why)
+- "needs_permit": true/false
+- "est_trees": estimated number of trees that could fit here
+- "condition": "bare" | "sparse" | "maintained" | "overgrown"
+
+Return ONLY a valid JSON array. NO markdown. NO explanation. Find 4-12 areas.
+[{"points":[[10,20],[30,20],[32,45],[8,43]],"label":"East Courtyard","type":"courtyard","plantability":8,"suggestion":"Plant 3 Desert Willow trees for shade and drought tolerance","needs_permit":false,"est_trees":3,"condition":"bare"}, ...]`;
 
         const response = await fetch(`${CONFIG.OLLAMA_URL}/api/generate`, {
           method: 'POST',
@@ -1633,91 +1698,193 @@ Find at least 3-8 sites. Be thorough.`;
             prompt,
             images: [base64],
             stream: false,
-            options: { temperature: 0.3, num_predict: 2048 }
+            options: { temperature: 0.3, num_predict: 4096 }
           })
         });
 
         if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
+
+        setScanStatus('PROCESSING RESULTS', 'Converting AI detections to map overlays...');
+
         const data = await response.json();
         const rawText = (data.response || '').replace(/```json|```/g, '').trim();
 
-        let spots;
-        try { spots = JSON.parse(rawText); }
-        catch { const m = rawText.match(/\[[\s\S]*\]/); if (!m) throw new Error('No JSON array'); spots = JSON.parse(m[0]); }
+        let areas;
+        try { areas = JSON.parse(rawText); }
+        catch { const m = rawText.match(/\[[\s\S]*\]/); if (!m) throw new Error('No JSON array found in AI response'); areas = JSON.parse(m[0]); }
 
-        if (!Array.isArray(spots) || spots.length === 0) throw new Error('No spots detected');
+        if (!Array.isArray(areas) || areas.length === 0) throw new Error('No areas detected');
 
-        // Clear previous AI markers
-        clearAISpots();
-
-        // Convert screen percentages to map coordinates
-        for (const spot of spots) {
-          const lng = bounds.getWest() + (spot.x / 100) * (bounds.getEast() - bounds.getWest());
-          const lat = bounds.getNorth() - (spot.y / 100) * (bounds.getNorth() - bounds.getSouth());
-
-          const el = document.createElement('div');
-          el.className = 'ai-spot-marker';
-          el.title = spot.suggestion;
-
-          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-            .setLngLat([lng, lat])
-            .addTo(map);
-
-          marker._spotData = {
-            name: formatSpotType(spot.type),
-            type: mapSpotToZoneType(spot.type),
-            plantability: spot.plantability || 5,
-            size: spot.size || 'medium',
-            suggestion: spot.suggestion || '',
-            needs_donation: spot.needs_donation || false,
-            permit_required: spot.type === 'median' || spot.type === 'rooftop' || spot.type === 'parking_island',
-            soil_type: 'Analyze with AI 📸',
-            sun_exposure: 'Analyze with AI 📸',
-            best_season: 'Spring / Fall',
-            ai_detected: true
-          };
-
-          el.addEventListener('click', () => {
-            openZoneSidebar(marker._spotData, { lng, lat });
+        // Step 4: Convert screen-percentage polygons to map coordinates
+        const features = areas.map((area, i) => {
+          const coords = area.points.map(([px, py]) => {
+            const lng = frozenBounds.west + (px / 100) * (frozenBounds.east - frozenBounds.west);
+            const lat = frozenBounds.north - (py / 100) * (frozenBounds.north - frozenBounds.south);
+            return [lng, lat];
           });
+          // Close the polygon
+          if (coords.length > 0) {
+            const first = coords[0], last = coords[coords.length - 1];
+            if (first[0] !== last[0] || first[1] !== last[1]) coords.push([...first]);
+          }
 
-          aiSpotMarkers.push(marker);
-        }
+          return {
+            type: 'Feature',
+            properties: {
+              id: `ai-scan-${i}`,
+              name: area.label || `Planting Area ${i + 1}`,
+              type: mapAIScanType(area.type),
+              ai_type: area.type || 'grass_patch',
+              plantability: area.plantability || 5,
+              suggestion: area.suggestion || '',
+              needs_permit: area.needs_permit || false,
+              permit_required: area.needs_permit || false,
+              est_trees: area.est_trees || 1,
+              condition: area.condition || 'unknown',
+              soil_type: 'Analyze with AI 📸',
+              sun_exposure: 'Analyze with AI 📸',
+              best_season: 'Spring / Fall',
+              ai_detected: true,
+              needs_donation: area.condition === 'bare' || area.condition === 'overgrown'
+            },
+            geometry: { type: 'Polygon', coordinates: [coords] }
+          };
+        });
 
-        showToast(`🤖 AI FOUND ${spots.length} PLANTING OPPORTUNIT${spots.length !== 1 ? 'IES' : 'Y'}`);
+        const geojson = { type: 'FeatureCollection', features };
+
+        // Step 5: Draw polygons on the map
+        renderAIScanZones(geojson);
+
+        showToast(`🤖 AI DETECTED ${features.length} PLANTING AREA${features.length !== 1 ? 'S' : ''} — CLICK TO EXPLORE`);
       } catch (err) {
         console.warn('AI satellite scan failed:', err);
         if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
           showToast('🤖 AI SCAN NEEDS OLLAMA — RUN: ollama serve');
         } else {
-          showToast('🤖 AI SCAN COMPLETE — NO NEW SPOTS FOUND');
+          showToast('🤖 AI SCAN FOUND NO AREAS — TRY DIFFERENT VIEW');
         }
       } finally {
         overlay.classList.remove('active');
+        sweep.classList.remove('active');
+        scanBtn.classList.remove('scanning');
+        scanBtn.textContent = '⚡ SCAN FOR PLANTING SPOTS';
       }
     }
 
-    function formatSpotType(type) {
-      const names = {
-        grass_patch: 'Grass Patch', bare_soil: 'Bare Soil Area', sidewalk_strip: 'Sidewalk Planting Strip',
-        parking_island: 'Parking Lot Island', median: 'Road Median', rooftop: 'Rooftop Space',
-        vacant_lot: 'Vacant Lot', tree_gap: 'Tree Canopy Gap'
-      };
-      return names[type] || 'Planting Opportunity';
-    }
-
-    function mapSpotToZoneType(type) {
+    function mapAIScanType(aiType) {
       const mapping = {
         grass_patch: 'public_park', bare_soil: 'vacant', sidewalk_strip: 'sidewalk',
-        parking_island: 'median', median: 'median', rooftop: 'community',
-        vacant_lot: 'vacant', tree_gap: 'public_park'
+        parking_island: 'median', median: 'median', courtyard: 'community',
+        vacant_lot: 'vacant', tree_gap: 'public_park', garden_bed: 'community'
       };
-      return mapping[type] || 'public_park';
+      return mapping[aiType] || 'public_park';
     }
 
+    const AI_SCAN_COLORS = {
+      public_park: '#22c55e', community: '#3b82f6', vacant: '#f59e0b',
+      sidewalk: '#8b5cf6', median: '#06b6d4'
+    };
+
+    function renderAIScanZones(geojson) {
+      // Remove previous AI scan layers
+      clearAIScanLayers();
+
+      map.addSource('ai-scan-zones', { type: 'geojson', data: geojson });
+
+      // Fill layer with type-based colors and pulsing opacity
+      map.addLayer({
+        id: 'ai-scan-fill', type: 'fill', source: 'ai-scan-zones',
+        paint: {
+          'fill-color': [
+            'match', ['get', 'type'],
+            'public_park', AI_SCAN_COLORS.public_park,
+            'community', AI_SCAN_COLORS.community,
+            'vacant', AI_SCAN_COLORS.vacant,
+            'sidewalk', AI_SCAN_COLORS.sidewalk,
+            'median', AI_SCAN_COLORS.median,
+            AI_SCAN_COLORS.public_park
+          ],
+          'fill-opacity': 0.35
+        }
+      });
+
+      // Glowing outline
+      map.addLayer({
+        id: 'ai-scan-outline', type: 'line', source: 'ai-scan-zones',
+        paint: {
+          'line-color': [
+            'match', ['get', 'type'],
+            'public_park', AI_SCAN_COLORS.public_park,
+            'community', AI_SCAN_COLORS.community,
+            'vacant', AI_SCAN_COLORS.vacant,
+            'sidewalk', AI_SCAN_COLORS.sidewalk,
+            'median', AI_SCAN_COLORS.median,
+            AI_SCAN_COLORS.public_park
+          ],
+          'line-width': 3,
+          'line-blur': 1
+        }
+      });
+
+      // Dashed inner border for visual distinction
+      map.addLayer({
+        id: 'ai-scan-dash', type: 'line', source: 'ai-scan-zones',
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 1,
+          'line-opacity': 0.4,
+          'line-dasharray': [4, 4]
+        }
+      });
+
+      // Pulse animation for AI-detected zones
+      let aiOpacity = 0.35, aiGrowing = true;
+      if (window._aiPulseTimer) clearInterval(window._aiPulseTimer);
+      window._aiPulseTimer = setInterval(() => {
+        aiOpacity += aiGrowing ? 0.008 : -0.008;
+        if (aiOpacity >= 0.55) aiGrowing = false;
+        if (aiOpacity <= 0.2) aiGrowing = true;
+        if (map.getLayer('ai-scan-fill')) map.setPaintProperty('ai-scan-fill', 'fill-opacity', aiOpacity);
+      }, 40);
+
+      // Click handler
+      if (!aiScanClickBound) {
+        aiScanClickBound = true;
+        map.on('click', 'ai-scan-fill', (e) => {
+          if (e.features.length) {
+            const props = e.features[0].properties;
+            // Parse any stringified booleans from Mapbox
+            if (typeof props.permit_required === 'string') props.permit_required = props.permit_required === 'true';
+            if (typeof props.needs_donation === 'string') props.needs_donation = props.needs_donation === 'true';
+            if (typeof props.ai_detected === 'string') props.ai_detected = props.ai_detected === 'true';
+            if (typeof props.plantability === 'string') props.plantability = parseInt(props.plantability);
+            if (typeof props.est_trees === 'string') props.est_trees = parseInt(props.est_trees);
+            openZoneSidebar(props, e.lngLat);
+          }
+        });
+        map.on('mouseenter', 'ai-scan-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', 'ai-scan-fill', () => { map.getCanvas().style.cursor = ''; });
+      }
+
+      aiScanLayersAdded = true;
+    }
+
+    function clearAIScanLayers() {
+      ['ai-scan-dash', 'ai-scan-outline', 'ai-scan-fill'].forEach(id => {
+        try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
+      });
+      try { if (map.getSource('ai-scan-zones')) map.removeSource('ai-scan-zones'); } catch {}
+      if (window._aiPulseTimer) { clearInterval(window._aiPulseTimer); window._aiPulseTimer = null; }
+      aiScanLayersAdded = false;
+    }
+
+    // Remove old marker-based functions (replaced by polygon system)
+    let aiSpotMarkers = [];
     function clearAISpots() {
       aiSpotMarkers.forEach(m => m.remove());
       aiSpotMarkers = [];
+      clearAIScanLayers();
     }
 
     /* ─── DROP-A-PIN (click anywhere) ─── */
@@ -1733,8 +1900,15 @@ Find at least 3-8 sites. Be thorough.`;
         if (AppState.phase !== 'city') return;
 
         // Check if we clicked on a zone — if so, zone handler takes priority
-        const zoneFeatures = map.queryRenderedFeatures(e.point, { layers: ['zones-fill'] });
-        if (zoneFeatures.length > 0) return;
+        try {
+          const zoneFeatures = map.queryRenderedFeatures(e.point, { layers: ['zones-fill'] });
+          if (zoneFeatures.length > 0) return;
+        } catch {}
+        // Also check AI scan zones
+        try {
+          const aiFeatures = map.queryRenderedFeatures(e.point, { layers: ['ai-scan-fill'] });
+          if (aiFeatures.length > 0) return;
+        } catch {}
 
         // Drop a pin
         if (dropPinMarker) dropPinMarker.remove();
@@ -1893,6 +2067,13 @@ Find at least 3-8 sites. Be thorough.`;
       }
       if (props.ai_detected) {
         actions.push({ tag: 'AI', text: 'AI-detected opportunity — verify in person before planting' });
+      }
+      if (props.est_trees && props.est_trees > 0) {
+        actions.push({ tag: 'CAPACITY', text: `Estimated capacity: ${props.est_trees} tree${props.est_trees > 1 ? 's' : ''}` });
+      }
+      if (props.condition && props.condition !== 'unknown') {
+        const condLabels = { bare: '🏜 Current condition: Bare ground', sparse: '🌾 Current condition: Sparse vegetation', maintained: '✅ Current condition: Well maintained', overgrown: '🌿 Current condition: Overgrown / unmaintained' };
+        actions.push({ tag: 'STATUS', text: condLabels[props.condition] || `Condition: ${props.condition}` });
       }
       actions.push({ tag: 'NEXT', text: 'Upload a soil photo below for species recommendations' });
 
@@ -2240,6 +2421,8 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       try { if(map.getSource('planting-zones')) map.removeSource('planting-zones'); } catch{}
       zoneClickBound = false;
       clearAISpots();
+      clearAIScanLayers();
+      aiScanClickBound = false;
       if (dropPinMarker) { dropPinMarker.remove(); dropPinMarker = null; }
       if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null; }
       document.getElementById('topbar').classList.remove('visible');
