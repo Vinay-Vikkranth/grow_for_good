@@ -2,13 +2,20 @@
 
 Interactive 3D tree-planting web app — Mapbox GL JS + Three.js + Ollama (local AI vision).
 
-**No API keys, no cloud, no cost** — AI runs entirely on your machine via Ollama.
+**No cloud costs** — AI runs entirely on your machine via Ollama.
 
 ---
 
 ## Quick Start
 
-### 1. Install Ollama (local AI runner)
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/Vinay-Vikkranth/grow_for_good.git
+cd grow_for_good
+```
+
+### 2. Install Ollama (local AI runner)
 
 Download from **[ollama.com](https://ollama.com)** and install it.
 
@@ -24,23 +31,28 @@ Start the Ollama server (runs in background):
 ollama serve
 ```
 
-### 2. Add your Mapbox token to `index.html`
+### 3. Add your Mapbox token
 
-Open [index.html](index.html) and find the `CONFIG` block near the bottom:
+```bash
+cd plantmap
+cp config.example.js config.js
+```
+
+Open `config.js` and replace the placeholder with your token:
 
 ```js
-const CONFIG = {
-  MAPBOX_TOKEN: 'pk.eyJ1...REPLACE_ME',   // ← only this needs changing
-  OLLAMA_URL:   'http://localhost:11434',
-  OLLAMA_MODEL: 'llava',
+window.PLANTMAP_CONFIG = {
+  MAPBOX_TOKEN:  'pk.eyJ1...YOUR_TOKEN_HERE',
+  OLLAMA_URL:    'http://localhost:11434',
+  OLLAMA_MODEL:  'llava',
 };
 ```
 
 Get a free Mapbox token at **[mapbox.com](https://account.mapbox.com)** → Tokens → Create a token.
 
-### 3. Open in browser
+### 4. Open in browser
 
-Double-click `index.html` — no server, no npm, no build step needed.
+Open `plantmap/index.html` in your browser — no server, no npm, no build step needed.
 
 ---
 
@@ -88,10 +100,13 @@ In that case, either:
 ```
 plantmap/
 ├── index.html          ← Entire app (HTML + CSS + JS)
-├── assets/
-│   ├── icons/
-│   │   ├── leaf.svg
-│   │   └── logo.svg
-│   └── models/         ← Optional: drop .glb tree models here
-└── README.md
+├── config.example.js   ← Copy to config.js and add your Mapbox token
+├── config.js           ← Your local config (gitignored)
+├── README.md
+└── assets/
+    ├── bgm.mp3         ← Lofi background music
+    ├── icons/
+    │   ├── leaf.svg
+    │   └── logo.svg
+    └── models/         ← Optional: drop .glb tree models here
 ```

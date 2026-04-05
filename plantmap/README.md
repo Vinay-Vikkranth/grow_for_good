@@ -24,15 +24,21 @@ Start the Ollama server (runs in background):
 ollama serve
 ```
 
-### 2. Add your Mapbox token to `index.html`
+### 2. Add your Mapbox token
 
-Open [index.html](index.html) and find the `CONFIG` block near the bottom:
+Copy `config.example.js` to `config.js` and add your token:
+
+```bash
+cp config.example.js config.js
+```
+
+Edit `config.js`:
 
 ```js
-const CONFIG = {
-  MAPBOX_TOKEN: 'pk.eyJ1...REPLACE_ME',   // ← only this needs changing
-  OLLAMA_URL:   'http://localhost:11434',
-  OLLAMA_MODEL: 'llava',
+window.PLANTMAP_CONFIG = {
+  MAPBOX_TOKEN:  'pk.eyJ1...YOUR_TOKEN_HERE',
+  OLLAMA_URL:    'http://localhost:11434',
+  OLLAMA_MODEL:  'llava',
 };
 ```
 
