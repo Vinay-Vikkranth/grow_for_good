@@ -1176,6 +1176,11 @@
       stopGlobeRotation();
       document.getElementById('intro-screen').classList.add('exiting');
 
+      // Start BGM right as the zoom begins
+      initBGM();
+      setupLoopPoint();
+      if (!NatureEngine.audioMuted) fadeAudioIn();
+
       map.flyTo({ center: [lng, lat], zoom: 5, pitch: 20, duration: 2000, essential: true });
       setTimeout(() => {
         map.flyTo({ center: [lng, lat], zoom: 16, pitch: 62, bearing: -20, duration: 3500, essential: true });
@@ -1670,13 +1675,14 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       if (!audio || NatureEngine.audioMuted) return;
       audio.currentTime = 22;
       audio.play().catch(() => {});
-      // Smooth fade in over 3 seconds
+      // Smooth fade in over 3s to a very mild level
       audio.volume = 0;
       let v = 0;
+      const target = 0.12;
       const fade = setInterval(() => {
-        v = Math.min(v + 0.02, 0.5);
+        v = Math.min(v + 0.004, target);
         audio.volume = v;
-        if (v >= 0.5) clearInterval(fade);
+        if (v >= target) clearInterval(fade);
       }, 60);
       NatureEngine._fadeIn = fade;
     }
@@ -1735,12 +1741,9 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       // Start cloud animation
       cloudRAF = requestAnimationFrame(animateClouds);
 
-      // Audio
-      initBGM();
-      setupLoopPoint();
+      // Sound toggle icon
       if (!NatureEngine.audioMuted) {
         document.getElementById('sound-toggle').textContent = '🔊';
-        fadeAudioIn();
       }
     }
 
