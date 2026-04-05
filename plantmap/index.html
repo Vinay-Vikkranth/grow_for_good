@@ -607,6 +607,83 @@
       font-weight: 700;
     }
 
+    /* ─── ZONE STATUS BADGES ─── */
+    .zone-status-badge {
+      font-family: var(--font-mono);
+      font-size: 0.52rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .zone-status-badge.plantable {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .zone-status-badge.non-plantable {
+      background: rgba(100, 116, 139, 0.15);
+      color: #94a3b8;
+      border: 1px solid rgba(100, 116, 139, 0.3);
+    }
+    .score-circle.none { background: #334155; color: #94a3b8; }
+
+    /* ─── AI SUGGESTION BOX ─── */
+    .ai-suggestion-box {
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      font-size: 0.66rem;
+      line-height: 1.7;
+      color: var(--text-mid);
+    }
+    .ai-suggestion-box.plantable {
+      background: rgba(34, 197, 94, 0.08);
+      border-left: 3px solid #22c55e;
+    }
+    .ai-suggestion-box.alternative {
+      background: rgba(59, 130, 246, 0.08);
+      border-left: 3px solid #3b82f6;
+    }
+    .suggestion-header {
+      font-family: var(--font-mono);
+      font-size: 0.48rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .ai-suggestion-box p { margin: 0; }
+
+    /* ─── PREDICTION GRID ─── */
+    .prediction-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .pred-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 8px 10px;
+      background: var(--bg-card2);
+      border: 1px solid var(--border);
+    }
+    .pred-icon { font-size: 1rem; }
+    .pred-label {
+      font-family: var(--font-mono);
+      font-size: 0.42rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .pred-value {
+      font-size: 0.6rem;
+      color: var(--text);
+      font-weight: 500;
+    }
+
     /* ─── AI-DETECTED ZONE LABELS ─── */
     .ai-zone-label {
       font-family: var(--font-mono);
@@ -1654,41 +1731,57 @@
         };
 
         // Step 2: Capture the canvas
-        await new Promise(r => setTimeout(r, 300)); // let the map settle
+        await new Promise(r => setTimeout(r, 300));
         const { base64 } = captureMapCanvas();
 
-        setScanStatus('AI ANALYZING TERRAIN', 'Detecting plantable areas with computer vision...');
+        setScanStatus('AI ANALYZING TERRAIN', 'Segmenting every surface in view...');
 
-        // Step 3: Send to Ollama with polygon-detection prompt
-        const prompt = `You are an expert urban forestry computer vision system analyzing a satellite/aerial view.
+        // Step 3: COMPREHENSIVE prompt — classify EVERY visible surface
+        const prompt = `You are an expert urban land-use segmentation AI analyzing a satellite/aerial image.
 
-TASK: Identify every potential planting area in this image — places where trees, shrubs, or vegetation could be planted or improved.
+TASK: Segment the ENTIRE visible area into zones. Every surface must be classified — buildings, roads, parking lots, grass, trees, bare soil, sidewalks, water, everything. Leave NO area unclassified.
 
-For EACH planting area, provide its PRECISE BOUNDARY as a polygon with corner points.
-Each corner point is given as (x%, y%) — percentages from the top-left corner of the image.
+RULES:
+1. Cover the ENTIRE image. Every part of the image must belong to at least one polygon.
+2. Trace PRECISE boundaries as polygon corner points using (x%, y%) from top-left.
+3. Use at least 4 corner points per polygon. Complex shapes need 6-10 points.
+4. Find 15-30 distinct areas. Break large areas into sub-zones if needed.
+5. Include BOTH plantable AND non-plantable areas.
 
-What to look for:
-- Green grass patches between buildings (these often have room for more trees)
-- Bare dirt or brown earth areas
-- Wide sidewalk buffer strips along roads
-- Parking lot islands and medians
-- Empty courtyards or plazas
-- Gaps in tree canopy where more trees could fit
-- Unmaintained or sparse vegetation areas
-- Road medians and dividers with soil
+SURFACE TYPES (use exactly these):
+Plantable surfaces:
+- "grass_patch" — any green grass area, lawns, grassy strips
+- "bare_soil" — exposed dirt, brown earth, unpaved ground
+- "sidewalk_strip" — buffer strips along sidewalks/roads with soil
+- "parking_island" — small islands in parking lots
+- "median" — road medians or dividers
+- "courtyard" — open plazas, courtyards between buildings
+- "vacant_lot" — empty unused land
+- "tree_gap" — gaps in existing tree canopy where more could fit
+- "garden_bed" — flower beds or maintained garden areas
 
-For each area give:
-- "points": array of [x,y] percentage pairs forming the polygon boundary (at least 4 points, trace the shape accurately)
-- "label": a short descriptive name (e.g. "Courtyard Grass Area", "Parking Strip", "Bare Patch Near Road")
-- "type": one of "grass_patch", "bare_soil", "sidewalk_strip", "parking_island", "median", "courtyard", "vacant_lot", "tree_gap", "garden_bed"
-- "plantability": 1-10 score
-- "suggestion": one specific sentence on what to plant (species name + why)
+Non-plantable surfaces:
+- "building" — rooftops, structures
+- "road" — paved roads, streets
+- "parking_lot" — paved parking areas
+- "existing_trees" — dense mature tree canopy already present
+- "water" — pools, ponds, fountains
+- "infrastructure" — utility areas, fences, walls, equipment
+
+For EACH zone provide:
+- "points": array of [x%, y%] pairs forming the polygon (minimum 4 points, trace shape precisely)
+- "label": descriptive name (e.g. "North Building Rooftop", "Central Grass Lawn", "Main Road")
+- "type": one of the types listed above
+- "plantability": 0-10 (0 for buildings/roads, 1-3 for difficult, 4-6 moderate, 7-10 excellent)
+- "suggestion": what could be done here (for buildings: "Rooftop garden potential" or "Solar panels recommended"; for roads: "Permeable paving could allow root growth"; for grass: specific tree species recommendation; for parking: "Convert 20% to bioswale gardens")
 - "needs_permit": true/false
-- "est_trees": estimated number of trees that could fit here
-- "condition": "bare" | "sparse" | "maintained" | "overgrown"
+- "est_trees": how many trees could realistically fit (0 for buildings/roads unless rooftop)
+- "condition": "paved" | "built" | "bare" | "sparse" | "maintained" | "overgrown" | "dense_canopy"
+- "soil_prediction": predict soil type based on visual cues — "clay" | "loamy" | "sandy" | "rocky" | "compacted" | "organic_rich" | "unknown" | "no_soil"
+- "sun_exposure": estimate from surroundings — "full_sun" | "partial_shade" | "full_shade" | "varies"
 
-Return ONLY a valid JSON array. NO markdown. NO explanation. Find 4-12 areas.
-[{"points":[[10,20],[30,20],[32,45],[8,43]],"label":"East Courtyard","type":"courtyard","plantability":8,"suggestion":"Plant 3 Desert Willow trees for shade and drought tolerance","needs_permit":false,"est_trees":3,"condition":"bare"}, ...]`;
+Return ONLY a valid JSON array. NO markdown. NO explanation. Cover the ENTIRE image.
+[{"points":[[10,5],[40,5],[42,30],[8,28]],"label":"Commercial Building A","type":"building","plantability":1,"suggestion":"Flat rooftop suitable for green roof installation — can reduce urban heat island effect","needs_permit":true,"est_trees":0,"condition":"built","soil_prediction":"no_soil","sun_exposure":"full_sun"}, ...]`;
 
         const response = await fetch(`${CONFIG.OLLAMA_URL}/api/generate`, {
           method: 'POST',
@@ -1698,25 +1791,30 @@ Return ONLY a valid JSON array. NO markdown. NO explanation. Find 4-12 areas.
             prompt,
             images: [base64],
             stream: false,
-            options: { temperature: 0.3, num_predict: 4096 }
+            options: { temperature: 0.3, num_predict: 8192 }
           })
         });
 
         if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
 
-        setScanStatus('PROCESSING RESULTS', 'Converting AI detections to map overlays...');
+        setScanStatus('PROCESSING RESULTS', 'Building comprehensive terrain map...');
 
         const data = await response.json();
         const rawText = (data.response || '').replace(/```json|```/g, '').trim();
 
         let areas;
         try { areas = JSON.parse(rawText); }
-        catch { const m = rawText.match(/\[[\s\S]*\]/); if (!m) throw new Error('No JSON array found in AI response'); areas = JSON.parse(m[0]); }
+        catch {
+          const m = rawText.match(/\[[\s\S]*\]/);
+          if (!m) throw new Error('No JSON array found in AI response');
+          areas = JSON.parse(m[0]);
+        }
 
         if (!Array.isArray(areas) || areas.length === 0) throw new Error('No areas detected');
 
         // Step 4: Convert screen-percentage polygons to map coordinates
         const features = areas.map((area, i) => {
+          if (!area.points || !Array.isArray(area.points) || area.points.length < 3) return null;
           const coords = area.points.map(([px, py]) => {
             const lng = frozenBounds.west + (px / 100) * (frozenBounds.east - frozenBounds.west);
             const lat = frozenBounds.north - (py / 100) * (frozenBounds.north - frozenBounds.south);
@@ -1728,35 +1826,43 @@ Return ONLY a valid JSON array. NO markdown. NO explanation. Find 4-12 areas.
             if (first[0] !== last[0] || first[1] !== last[1]) coords.push([...first]);
           }
 
+          const zoneType = mapAIScanType(area.type);
+          const isPlantable = !['building', 'road', 'parking', 'water', 'infrastructure'].includes(zoneType);
+          const soilPred = formatSoilPrediction(area.soil_prediction);
+          const sunPred = formatSunExposure(area.sun_exposure);
+
           return {
             type: 'Feature',
             properties: {
               id: `ai-scan-${i}`,
-              name: area.label || `Planting Area ${i + 1}`,
-              type: mapAIScanType(area.type),
-              ai_type: area.type || 'grass_patch',
-              plantability: area.plantability || 5,
+              name: area.label || `Zone ${i + 1}`,
+              type: zoneType,
+              ai_type: area.type || 'unknown',
+              plantability: area.plantability ?? (isPlantable ? 5 : 0),
               suggestion: area.suggestion || '',
               needs_permit: area.needs_permit || false,
               permit_required: area.needs_permit || false,
-              est_trees: area.est_trees || 1,
+              est_trees: area.est_trees || 0,
               condition: area.condition || 'unknown',
-              soil_type: 'Analyze with AI 📸',
-              sun_exposure: 'Analyze with AI 📸',
-              best_season: 'Spring / Fall',
+              soil_type: soilPred,
+              sun_exposure: sunPred,
+              best_season: isPlantable ? 'Spring / Fall' : 'N/A',
               ai_detected: true,
-              needs_donation: area.condition === 'bare' || area.condition === 'overgrown'
+              is_plantable: isPlantable,
+              needs_donation: isPlantable && (area.condition === 'bare' || area.condition === 'overgrown')
             },
             geometry: { type: 'Polygon', coordinates: [coords] }
           };
-        });
+        }).filter(Boolean);
 
         const geojson = { type: 'FeatureCollection', features };
 
         // Step 5: Draw polygons on the map
         renderAIScanZones(geojson);
 
-        showToast(`🤖 AI DETECTED ${features.length} PLANTING AREA${features.length !== 1 ? 'S' : ''} — CLICK TO EXPLORE`);
+        const plantableCount = features.filter(f => f.properties.is_plantable).length;
+        const totalCount = features.length;
+        showToast(`🤖 SCANNED ${totalCount} ZONES — ${plantableCount} PLANTABLE — CLICK ANY ZONE`);
       } catch (err) {
         console.warn('AI satellite scan failed:', err);
         if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
@@ -1772,92 +1878,153 @@ Return ONLY a valid JSON array. NO markdown. NO explanation. Find 4-12 areas.
       }
     }
 
-    function mapAIScanType(aiType) {
-      const mapping = {
-        grass_patch: 'public_park', bare_soil: 'vacant', sidewalk_strip: 'sidewalk',
-        parking_island: 'median', median: 'median', courtyard: 'community',
-        vacant_lot: 'vacant', tree_gap: 'public_park', garden_bed: 'community'
+    function formatSoilPrediction(soil) {
+      const labels = {
+        clay: 'Clay (heavy, holds moisture)',
+        loamy: 'Loamy (ideal for planting)',
+        sandy: 'Sandy (drains fast, low nutrients)',
+        rocky: 'Rocky (poor root penetration)',
+        compacted: 'Compacted (needs aeration)',
+        organic_rich: 'Organic-rich (fertile)',
+        no_soil: 'No natural soil',
+        unknown: 'Analyze with AI 📸'
       };
-      return mapping[aiType] || 'public_park';
+      return labels[soil] || labels.unknown;
     }
 
+    function formatSunExposure(sun) {
+      const labels = {
+        full_sun: 'Full Sun (6+ hrs)',
+        partial_shade: 'Partial Shade (3-6 hrs)',
+        full_shade: 'Full Shade (<3 hrs)',
+        varies: 'Varies by season'
+      };
+      return labels[sun] || 'Analyze with AI 📸';
+    }
+
+    function mapAIScanType(aiType) {
+      const mapping = {
+        grass_patch: 'green_space', bare_soil: 'bare_ground', sidewalk_strip: 'sidewalk_strip',
+        parking_island: 'median', median: 'median', courtyard: 'courtyard',
+        vacant_lot: 'vacant', tree_gap: 'tree_gap', garden_bed: 'garden',
+        building: 'building', road: 'road', parking_lot: 'parking',
+        existing_trees: 'existing_trees', water: 'water', infrastructure: 'infrastructure'
+      };
+      return mapping[aiType] || 'green_space';
+    }
+
+    // Colors for every zone category
     const AI_SCAN_COLORS = {
-      public_park: '#22c55e', community: '#3b82f6', vacant: '#f59e0b',
-      sidewalk: '#8b5cf6', median: '#06b6d4'
+      // Plantable (warm/natural tones)
+      green_space:    '#22c55e',  // bright green
+      bare_ground:    '#f59e0b',  // amber
+      sidewalk_strip: '#a78bfa',  // purple
+      median:         '#06b6d4',  // cyan
+      courtyard:      '#3b82f6',  // blue
+      vacant:         '#eab308',  // yellow
+      tree_gap:       '#10b981',  // emerald
+      garden:         '#ec4899',  // pink
+      // Non-plantable (muted/cool tones)
+      building:       '#64748b',  // slate grey
+      road:           '#475569',  // dark grey
+      parking:        '#78716c',  // stone
+      existing_trees: '#166534',  // deep green
+      water:          '#0ea5e9',  // sky blue
+      infrastructure: '#94a3b8'   // light grey
     };
 
     function renderAIScanZones(geojson) {
-      // Remove previous AI scan layers
       clearAIScanLayers();
 
       map.addSource('ai-scan-zones', { type: 'geojson', data: geojson });
 
-      // Fill layer with type-based colors and pulsing opacity
+      // Build the Mapbox match expression for colors
+      const colorExpr = ['match', ['get', 'type']];
+      for (const [type, color] of Object.entries(AI_SCAN_COLORS)) {
+        colorExpr.push(type, color);
+      }
+      colorExpr.push('#22c55e'); // fallback
+
+      // Separate opacity for plantable vs non-plantable
+      const opacityExpr = [
+        'case',
+        ['==', ['get', 'is_plantable'], 'true'], 0.35,
+        ['==', ['get', 'is_plantable'], true], 0.35,
+        0.2
+      ];
+
+      // Fill layer
       map.addLayer({
         id: 'ai-scan-fill', type: 'fill', source: 'ai-scan-zones',
         paint: {
-          'fill-color': [
-            'match', ['get', 'type'],
-            'public_park', AI_SCAN_COLORS.public_park,
-            'community', AI_SCAN_COLORS.community,
-            'vacant', AI_SCAN_COLORS.vacant,
-            'sidewalk', AI_SCAN_COLORS.sidewalk,
-            'median', AI_SCAN_COLORS.median,
-            AI_SCAN_COLORS.public_park
-          ],
-          'fill-opacity': 0.35
+          'fill-color': colorExpr,
+          'fill-opacity': opacityExpr
         }
       });
 
-      // Glowing outline
+      // Glowing outline — thicker for plantable areas
       map.addLayer({
         id: 'ai-scan-outline', type: 'line', source: 'ai-scan-zones',
         paint: {
-          'line-color': [
-            'match', ['get', 'type'],
-            'public_park', AI_SCAN_COLORS.public_park,
-            'community', AI_SCAN_COLORS.community,
-            'vacant', AI_SCAN_COLORS.vacant,
-            'sidewalk', AI_SCAN_COLORS.sidewalk,
-            'median', AI_SCAN_COLORS.median,
-            AI_SCAN_COLORS.public_park
+          'line-color': colorExpr,
+          'line-width': [
+            'case',
+            ['==', ['get', 'is_plantable'], 'true'], 3,
+            ['==', ['get', 'is_plantable'], true], 3,
+            1.5
           ],
-          'line-width': 3,
-          'line-blur': 1
+          'line-blur': [
+            'case',
+            ['==', ['get', 'is_plantable'], 'true'], 2,
+            ['==', ['get', 'is_plantable'], true], 2,
+            0
+          ]
         }
       });
 
-      // Dashed inner border for visual distinction
+      // Dashed inner border
       map.addLayer({
         id: 'ai-scan-dash', type: 'line', source: 'ai-scan-zones',
         paint: {
           'line-color': '#ffffff',
           'line-width': 1,
-          'line-opacity': 0.4,
+          'line-opacity': [
+            'case',
+            ['==', ['get', 'is_plantable'], 'true'], 0.5,
+            ['==', ['get', 'is_plantable'], true], 0.5,
+            0.15
+          ],
           'line-dasharray': [4, 4]
         }
       });
 
-      // Pulse animation for AI-detected zones
+      // Pulse animation — only affects plantable zones visually
       let aiOpacity = 0.35, aiGrowing = true;
       if (window._aiPulseTimer) clearInterval(window._aiPulseTimer);
       window._aiPulseTimer = setInterval(() => {
-        aiOpacity += aiGrowing ? 0.008 : -0.008;
-        if (aiOpacity >= 0.55) aiGrowing = false;
+        aiOpacity += aiGrowing ? 0.006 : -0.006;
+        if (aiOpacity >= 0.5) aiGrowing = false;
         if (aiOpacity <= 0.2) aiGrowing = true;
-        if (map.getLayer('ai-scan-fill')) map.setPaintProperty('ai-scan-fill', 'fill-opacity', aiOpacity);
-      }, 40);
+        if (map.getLayer('ai-scan-fill')) {
+          map.setPaintProperty('ai-scan-fill', 'fill-opacity', [
+            'case',
+            ['==', ['get', 'is_plantable'], 'true'], aiOpacity,
+            ['==', ['get', 'is_plantable'], true], aiOpacity,
+            0.18
+          ]);
+        }
+      }, 50);
 
-      // Click handler
+      // Click handler for ALL zones (plantable and non-plantable)
       if (!aiScanClickBound) {
         aiScanClickBound = true;
         map.on('click', 'ai-scan-fill', (e) => {
           if (e.features.length) {
             const props = e.features[0].properties;
-            // Parse any stringified booleans from Mapbox
             if (typeof props.permit_required === 'string') props.permit_required = props.permit_required === 'true';
             if (typeof props.needs_donation === 'string') props.needs_donation = props.needs_donation === 'true';
             if (typeof props.ai_detected === 'string') props.ai_detected = props.ai_detected === 'true';
+            if (typeof props.is_plantable === 'string') props.is_plantable = props.is_plantable === 'true';
             if (typeof props.plantability === 'string') props.plantability = parseInt(props.plantability);
             if (typeof props.est_trees === 'string') props.est_trees = parseInt(props.est_trees);
             openZoneSidebar(props, e.lngLat);
@@ -2020,27 +2187,37 @@ Return ONLY a valid JSON array. NO markdown. NO explanation. Find 4-12 areas.
       AppState.selectedZone = props;
       AppState.selectedZoneCoords = coords;
       AppState.phase = 'zone_selected';
+
+      const isPlantable = props.is_plantable === true || props.is_plantable === 'true';
+      const typeLabel = (props.ai_type || props.type || '').replace(/_/g, ' ').toUpperCase();
+
       document.getElementById('zone-name').textContent       = props.name;
-      document.getElementById('zone-type-badge').textContent = props.type.replace(/_/g,' ').toUpperCase();
-      document.getElementById('meta-soil').textContent       = props.soil_type;
-      document.getElementById('meta-sun').textContent        = props.sun_exposure;
+      document.getElementById('zone-type-badge').textContent = typeLabel;
+      document.getElementById('meta-soil').textContent       = props.soil_type || 'Analyze with AI 📸';
+      document.getElementById('meta-sun').textContent        = props.sun_exposure || 'Analyze with AI 📸';
       document.getElementById('meta-permit').textContent     = props.permit_required ? '⚠ Required' : '✓ Not Required';
-      document.getElementById('meta-season').textContent     = props.best_season;
+      document.getElementById('meta-season').textContent     = props.best_season || (isPlantable ? 'Spring / Fall' : 'N/A');
       AppState.uploadedImageB64 = null;
       document.getElementById('soil-photo-input').value = '';
       document.getElementById('upload-zone').innerHTML = `<div class="upload-inner"><span class="upload-icon">🌱</span><p>Tap to upload a photo or take one now</p></div>`;
       document.getElementById('analyze-btn').classList.add('hidden');
       document.getElementById('ai-loading').classList.add('hidden');
 
-      // Build action card
       const actionArea = document.getElementById('zone-action-card');
       let html = '';
 
-      // Plantability score (if AI-detected or has score)
+      // ── Status badge: Plantable vs Non-plantable ──
+      if (isPlantable) {
+        html += `<div class="zone-status-badge plantable">🌿 PLANTABLE ZONE</div>`;
+      } else {
+        html += `<div class="zone-status-badge non-plantable">🏗 NON-PLANTABLE SURFACE</div>`;
+      }
+
+      // ── Plantability score ──
       if (props.plantability != null) {
         const score = props.plantability;
-        const tier = score >= 7 ? 'high' : score >= 4 ? 'medium' : 'low';
-        const tierLabel = score >= 7 ? 'Great Spot!' : score >= 4 ? 'Moderate Potential' : 'Challenging Site';
+        const tier = score >= 7 ? 'high' : score >= 4 ? 'medium' : score >= 1 ? 'low' : 'none';
+        const tierLabel = score >= 7 ? 'Excellent Spot!' : score >= 4 ? 'Moderate Potential' : score >= 1 ? 'Challenging Site' : 'Not Plantable';
         html += `
           <div class="action-score">
             <div class="score-circle ${tier}">${score}</div>
@@ -2048,38 +2225,95 @@ Return ONLY a valid JSON array. NO markdown. NO explanation. Find 4-12 areas.
           </div>`;
       }
 
-      // Suggestion
+      // ── AI Suggestion ──
       if (props.suggestion && props.suggestion !== 'Upload a photo of this spot for AI analysis') {
-        html += `<p style="font-size:0.68rem;color:var(--text-mid);line-height:1.7;margin-bottom:10px;">💡 ${props.suggestion}</p>`;
+        const icon = isPlantable ? '💡' : '🔧';
+        html += `<div class="ai-suggestion-box ${isPlantable ? 'plantable' : 'alternative'}">
+          <div class="suggestion-header">${icon} AI RECOMMENDATION</div>
+          <p>${props.suggestion}</p>
+        </div>`;
       }
 
-      // Donation/community tag
+      // ── Soil & Sun prediction section ──
+      if (props.soil_type && props.soil_type !== 'Analyze with AI 📸') {
+        html += `<div class="prediction-grid">
+          <div class="pred-item"><span class="pred-icon">🧪</span><span class="pred-label">PREDICTED SOIL</span><span class="pred-value">${props.soil_type}</span></div>
+          <div class="pred-item"><span class="pred-icon">☀️</span><span class="pred-label">SUN EXPOSURE</span><span class="pred-value">${props.sun_exposure || 'Unknown'}</span></div>
+        </div>`;
+      }
+
+      // ── Donation/community tag ──
       if (props.needs_donation) {
         html += `<p style="font-size:0.62rem;color:#b8860b;margin-bottom:10px;padding:8px 10px;background:rgba(184,134,11,0.1);border-left:2px solid #b8860b;">🤝 This site could benefit from community funding or volunteer effort.</p>`;
       }
 
-      // Action steps
+      // ── Action steps ──
       const actions = [];
-      if (props.permit_required) {
-        actions.push({ tag: 'PERMIT', text: 'Contact city forestry department for planting permit' });
+
+      if (isPlantable) {
+        // Plantable zone actions
+        if (props.permit_required) {
+          actions.push({ tag: 'PERMIT', text: 'Contact city forestry department for planting permit', color: '#f59e0b' });
+        } else {
+          actions.push({ tag: 'FREE', text: 'No permit needed — you can plant here!', color: '#22c55e' });
+        }
+        if (props.est_trees && props.est_trees > 0) {
+          actions.push({ tag: 'CAPACITY', text: `Estimated capacity: ${props.est_trees} tree${props.est_trees > 1 ? 's' : ''}`, color: '#3b82f6' });
+        }
+        if (props.condition && props.condition !== 'unknown') {
+          const condLabels = {
+            bare: '🏜 Bare ground — great blank canvas for planting',
+            sparse: '🌾 Sparse vegetation — room for more trees',
+            maintained: '✅ Well maintained — coordinate with groundskeeper',
+            overgrown: '🌿 Overgrown — clear and replant with native species',
+            dense_canopy: '🌳 Dense canopy — limited space but understory possible'
+          };
+          actions.push({ tag: 'STATUS', text: condLabels[props.condition] || `Condition: ${props.condition}`, color: '#06b6d4' });
+        }
+        actions.push({ tag: 'AI', text: 'AI-detected opportunity — verify conditions in person', color: '#8b5cf6' });
+        actions.push({ tag: 'PHOTO', text: 'Upload a soil photo below for precise species match', color: '#ec4899' });
       } else {
-        actions.push({ tag: 'FREE', text: 'No permit needed — you can plant here!' });
+        // Non-plantable zone actions — show green alternatives
+        const altMap = {
+          building: [
+            { tag: 'GREEN ROOF', text: 'Install a green roof — reduces heat island, captures stormwater, adds habitat', color: '#22c55e' },
+            { tag: 'SOLAR', text: 'Combine solar panels with rooftop planters for dual benefit', color: '#f59e0b' },
+            { tag: 'VERTICAL', text: 'Add vertical green walls on building facades', color: '#10b981' }
+          ],
+          road: [
+            { tag: 'BIOSWALE', text: 'Roadside bioswales filter runoff and host native grasses', color: '#06b6d4' },
+            { tag: 'PERMEABLE', text: 'Permeable paving allows rainwater to reach tree roots', color: '#3b82f6' },
+            { tag: 'TREE LINE', text: 'Street tree planting along road edges where sidewalk allows', color: '#22c55e' }
+          ],
+          parking: [
+            { tag: 'GREEN LOT', text: 'Convert 15-20% of parking to bioswale gardens for stormwater', color: '#22c55e' },
+            { tag: 'SHADE TREES', text: 'Add canopy trees in parking islands — reduces heat by 15°F', color: '#10b981' },
+            { tag: 'PERMEABLE', text: 'Replace asphalt with permeable pavers', color: '#06b6d4' }
+          ],
+          existing_trees: [
+            { tag: 'MAINTAIN', text: 'Healthy canopy — protect and maintain these trees', color: '#22c55e' },
+            { tag: 'UNDERSTORY', text: 'Plant native understory shrubs beneath existing canopy', color: '#10b981' },
+            { tag: 'MULCH', text: 'Add natural mulch ring around base to improve soil health', color: '#8b5cf6' }
+          ],
+          water: [
+            { tag: 'RIPARIAN', text: 'Plant riparian buffer vegetation around water edges', color: '#22c55e' },
+            { tag: 'WETLAND', text: 'Introduce native wetland plants for habitat and filtration', color: '#06b6d4' }
+          ],
+          infrastructure: [
+            { tag: 'SCREEN', text: 'Use tall native hedges to screen infrastructure & add habitat', color: '#22c55e' },
+            { tag: 'VINE', text: 'Grow climbing vines on fences and walls for green coverage', color: '#10b981' }
+          ]
+        };
+        const alts = altMap[props.type] || altMap.infrastructure;
+        actions.push(...alts);
+        actions.push({ tag: 'ADVOCATE', text: 'Contact local council to advocate for green infrastructure here', color: '#f59e0b' });
       }
-      if (props.ai_detected) {
-        actions.push({ tag: 'AI', text: 'AI-detected opportunity — verify in person before planting' });
-      }
-      if (props.est_trees && props.est_trees > 0) {
-        actions.push({ tag: 'CAPACITY', text: `Estimated capacity: ${props.est_trees} tree${props.est_trees > 1 ? 's' : ''}` });
-      }
-      if (props.condition && props.condition !== 'unknown') {
-        const condLabels = { bare: '🏜 Current condition: Bare ground', sparse: '🌾 Current condition: Sparse vegetation', maintained: '✅ Current condition: Well maintained', overgrown: '🌿 Current condition: Overgrown / unmaintained' };
-        actions.push({ tag: 'STATUS', text: condLabels[props.condition] || `Condition: ${props.condition}` });
-      }
-      actions.push({ tag: 'NEXT', text: 'Upload a soil photo below for species recommendations' });
 
-      html += `<ul class="action-list">${actions.map(a => `<li><span class="action-tag">${a.tag}</span>${a.text}</li>`).join('')}</ul>`;
+      html += `<ul class="action-list">${actions.map(a =>
+        `<li style="border-left-color:${a.color}"><span class="action-tag" style="color:${a.color}">${a.tag}</span>${a.text}</li>`
+      ).join('')}</ul>`;
 
-      // City programs
+      // ── City programs ──
       const programs = getCityPrograms();
       html += `<div style="margin-top:14px;"><div style="font-size:0.5rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">LOCAL PROGRAMS — ${programs.city.toUpperCase()}</div>`;
       for (const p of programs.programs) {
