@@ -128,7 +128,6 @@
       padding: 40px 44px 44px;
       position: relative;
       overflow: hidden;
-      transition: opacity 0.15s ease, transform 0.15s ease;
     }
 
     /* Subtle topographic grid */
@@ -153,7 +152,7 @@
         rgba(240, 236, 228, 0.2) 30%,
         transparent 60%
       );
-      pointer-events: auto;
+      pointer-events: none; /* Let scroll/drag pass through to map */
     }
 
     /* Corner tick marks */
@@ -391,89 +390,6 @@
     @keyframes scan {
       0%   { left: -60%; }
       100% { left: 110%; }
-    }
-
-    /* Scroll-zoom location prompt */
-    #scroll-location-prompt {
-      position: fixed;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%) scale(0.9);
-      z-index: 101;
-      background: rgba(30, 35, 25, 0.92);
-      backdrop-filter: blur(16px);
-      border: 1px solid var(--green-border);
-      border-radius: 14px;
-      padding: 36px 40px;
-      text-align: center;
-      opacity: 0;
-      visibility: hidden;
-      transition: opacity 0.5s, visibility 0.5s, transform 0.5s;
-      pointer-events: none;
-      min-width: 340px;
-    }
-    #scroll-location-prompt.visible {
-      opacity: 1;
-      visibility: visible;
-      transform: translate(-50%, -50%) scale(1);
-      pointer-events: auto;
-    }
-    .prompt-title {
-      font-family: var(--ff-head);
-      font-size: 0.75rem;
-      letter-spacing: 0.3em;
-      color: var(--green-soft);
-      margin-bottom: 22px;
-    }
-    #scroll-location-prompt button {
-      display: block;
-      width: 100%;
-      padding: 13px 0;
-      font-family: var(--ff-mono);
-      font-size: 0.62rem;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      border: 1px solid var(--green-border);
-      background: var(--green-soft);
-      color: var(--bg);
-      cursor: pointer;
-      border-radius: 6px;
-      transition: background 0.2s, transform 0.15s;
-    }
-    #scroll-location-prompt button:hover {
-      background: #a3c585;
-      transform: translateY(-1px);
-    }
-    .prompt-divider {
-      font-family: var(--ff-mono);
-      font-size: 0.5rem;
-      letter-spacing: 0.3em;
-      color: rgba(255,255,255,0.3);
-      margin: 14px 0;
-    }
-    #scroll-city-input {
-      display: block;
-      width: 100%;
-      padding: 12px 14px;
-      font-family: var(--ff-mono);
-      font-size: 0.62rem;
-      letter-spacing: 0.1em;
-      color: #eee;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid var(--green-border);
-      border-radius: 6px;
-      outline: none;
-      margin-bottom: 10px;
-      box-sizing: border-box;
-    }
-    #scroll-city-input::placeholder { color: rgba(255,255,255,0.3); }
-    #scroll-city-input:focus { border-color: var(--green-soft); }
-    .prompt-hint {
-      font-family: var(--ff-mono);
-      font-size: 0.42rem;
-      letter-spacing: 0.2em;
-      color: rgba(255,255,255,0.25);
-      margin-top: 16px;
-      text-transform: uppercase;
     }
 
     /* ═══════════════════════════════════════════
@@ -1019,16 +935,6 @@
       <div class="corner-tick br"></div>
       <div class="globe-scroll-hint">Scroll or Click</div>
     </div>
-
-    <!-- Centered location prompt (appears at full scroll) -->
-    <div id="scroll-location-prompt">
-      <p class="prompt-title">WHERE DO YOU WANT TO PLANT?</p>
-      <button id="scroll-use-location" onclick="handleIntroEnter()">↳ USE MY LOCATION</button>
-      <div class="prompt-divider">OR</div>
-      <input type="text" id="scroll-city-input" placeholder="London, Tokyo, Austin TX..." autocomplete="off" spellcheck="false">
-      <button id="scroll-city-go" onclick="scrollGeocode()">FLY THERE →</button>
-      <p class="prompt-hint">scroll back up to return</p>
-    </div>
   </div>
 
   <!-- TOP NAV -->
@@ -1042,9 +948,9 @@
 
   <!-- GLOBAL THEME TOGGLE -->
   <div id="theme-toggle">
-    <button class="theme-opt active" data-theme="light" onclick="switchTheme('light')">☀ LIGHT</button>
+    <button class="theme-opt" data-theme="light" onclick="switchTheme('light')">☀ LIGHT</button>
     <div class="theme-divider"></div>
-    <button class="theme-opt" data-theme="satellite" onclick="switchTheme('satellite')">🛰 SATELLITE</button>
+    <button class="theme-opt active" data-theme="dark" onclick="switchTheme('dark')">🌙 DARK</button>
   </div>
 
   <!-- ZONE HINT -->
@@ -1133,9 +1039,12 @@
     /* ─── MAP INIT ─── */
     mapboxgl.accessToken = CONFIG.MAPBOX_TOKEN;
 
+    // Apply dark theme by default
+    document.body.classList.add('dark');
+
     const map = new mapboxgl.Map({
       container:  'map',
-      style:      'mapbox://styles/mapbox/light-v11',
+      style:      'mapbox://styles/mapbox/satellite-streets-v12',
       projection: 'globe',
       zoom:       1.5,
       center:     [0, 20],
@@ -1158,6 +1067,15 @@
     }
     startGlobeRotation();
 
+    // Stop rotation when user interacts with the map (scroll-zoom, drag)
+    map.on('mousedown', () => { if (AppState.phase === 'globe') stopGlobeRotation(); });
+    map.on('wheel', () => { if (AppState.phase === 'globe') stopGlobeRotation(); });
+    map.on('touchstart', () => { if (AppState.phase === 'globe') stopGlobeRotation(); });
+    // Restart rotation when interaction ends (if still on globe)
+    map.on('moveend', () => {
+      if (AppState.phase === 'globe' && !rotationTimer) startGlobeRotation();
+    });
+
     // Start BGM on page load (needs user gesture — also retried on first click)
     initBGM();
     setupLoopPoint();
@@ -1174,13 +1092,13 @@
     map.on('style.load', () => {
       AppState.mapReady = true;
 
-      // Warm atmosphere — globe clearly visible against the light bg
+      // Dark atmosphere — default satellite/dark style
       map.setFog({
-        color:            'rgb(228, 218, 200)',  // warm haze at horizon
-        'high-color':     'rgb(180, 200, 220)',  // soft blue upper atmosphere
-        'horizon-blend':  0.08,
-        'space-color':    'rgb(190, 210, 230)',  // light sky blue space — globe pops
-        'star-intensity': 0.0
+        color:            'rgb(20, 20, 30)',
+        'high-color':     'rgb(36, 92, 223)',
+        'horizon-blend':  0.02,
+        'space-color':    'rgb(11, 11, 25)',
+        'star-intensity': 0.6
       });
 
       map.addSource('mapbox-dem', {
@@ -1194,11 +1112,6 @@
 
     /* ─── SCROLL-TO-ENTER ─── */
     let introInteracted = false;
-    let scrollProgress = 0;       // 0 → 1
-    const SCROLL_THRESHOLD = 600; // total scroll delta to reach full zoom
-    const ZOOM_START = 1.5;
-    const ZOOM_END   = 5;
-
     function handleIntroEnter() {
       if (introInteracted) return;
       introInteracted = true;
@@ -1219,80 +1132,7 @@
       }
     }
 
-    function updateScrollZoom() {
-      const t = scrollProgress; // 0 → 1
-      const zoom = ZOOM_START + (ZOOM_END - ZOOM_START) * t;
-      map.setZoom(zoom);
-
-      // Fade out the intro panel (left side) as user scrolls
-      const panel = document.querySelector('.intro-panel');
-      const fadeStart = 0.15;  // start fading at 15% scroll
-      const fadeEnd   = 0.65;  // fully faded at 65%
-      if (t <= fadeStart) {
-        panel.style.opacity = '1';
-        panel.style.transform = 'translateX(0)';
-        panel.style.pointerEvents = 'auto';
-      } else if (t >= fadeEnd) {
-        panel.style.opacity = '0';
-        panel.style.transform = 'translateX(-60px)';
-        panel.style.pointerEvents = 'none';
-      } else {
-        const f = (t - fadeStart) / (fadeEnd - fadeStart);
-        panel.style.opacity = String(1 - f);
-        panel.style.transform = `translateX(${-60 * f}px)`;
-        panel.style.pointerEvents = f > 0.5 ? 'none' : 'auto';
-      }
-
-      // Fade out globe-side overlay gradient too
-      const globeSide = document.querySelector('.intro-globe-side');
-      if (t > 0.3) {
-        const f = Math.min((t - 0.3) / 0.4, 1);
-        const isDark = document.body.classList.contains('dark');
-        if (isDark) {
-          globeSide.style.background = `linear-gradient(to right, rgba(18,26,18,${0.65*(1-f)}) 0%, rgba(18,26,18,${0.2*(1-f)}) 30%, transparent 60%)`;
-        } else {
-          globeSide.style.background = `linear-gradient(to right, rgba(240,236,228,${0.65*(1-f)}) 0%, rgba(240,236,228,${0.2*(1-f)}) 30%, transparent 60%)`;
-        }
-      }
-
-      // At full scroll, show the city search prompt
-      if (t >= 1) {
-        stopGlobeRotation();
-        // Show a centered location prompt
-        document.getElementById('scroll-location-prompt').classList.add('visible');
-      } else {
-        document.getElementById('scroll-location-prompt').classList.remove('visible');
-        if (!introInteracted) startGlobeRotation();
-      }
-
-      // Slow globe rotation based on scroll progress
-      // (handled by shorter interval gap — simpler: just reduce rotation step)
-    }
-
-    // Wheel on entire intro screen for progressive zoom
-    document.getElementById('intro-screen').addEventListener('wheel', (e) => {
-      if (introInteracted) return;
-      e.preventDefault();
-      const delta = e.deltaY / SCROLL_THRESHOLD;
-      scrollProgress = Math.max(0, Math.min(1, scrollProgress + delta));
-      updateScrollZoom();
-    }, { passive: false });
-
-    // Swipe on globe side
-    let touchStartY = 0;
-    document.querySelector('.intro-globe-side').addEventListener('touchstart', (e) => {
-      touchStartY = e.touches[0].clientY;
-    }, { passive: true });
-    document.querySelector('.intro-globe-side').addEventListener('touchmove', (e) => {
-      if (introInteracted) return;
-      const delta = (touchStartY - e.touches[0].clientY) / SCROLL_THRESHOLD;
-      touchStartY = e.touches[0].clientY;
-      scrollProgress = Math.max(0, Math.min(1, scrollProgress + delta * 2));
-      updateScrollZoom();
-    }, { passive: true });
-
-    // Click on globe side still works as a shortcut
-    document.querySelector('.intro-globe-side').addEventListener('click', handleIntroEnter);
+    // Globe side has pointer-events: none — scroll/drag passes through to map
 
     /* ─── LOCATION FLOW ─── */
     document.getElementById('allow-location-btn').addEventListener('click', () => {
@@ -1340,41 +1180,11 @@
       }
     }
 
-    async function scrollGeocode() {
-      const input = document.getElementById('scroll-city-input');
-      const query = input.value.trim();
-      if (!query) return;
-      const btn = document.getElementById('scroll-city-go');
-      btn.textContent = 'SEARCHING...';
-      btn.disabled = true;
-      try {
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${CONFIG.MAPBOX_TOKEN}&limit=1&types=place,region,country`;
-        const res  = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (!json.features?.length) { showToast('CITY NOT FOUND — TRY AGAIN'); return; }
-        const [lng, lat] = json.features[0].center;
-        flyToLocation(lng, lat);
-      } catch (err) {
-        showToast('SEARCH FAILED — CHECK YOUR TOKEN');
-      } finally {
-        btn.textContent = 'FLY THERE →';
-        btn.disabled = false;
-      }
-    }
-
-    // Enter key on scroll prompt input
-    document.getElementById('scroll-city-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') scrollGeocode();
-    });
-
     function flyToLocation(lng, lat) {
       AppState.userLocation = { lng, lat };
       AppState.phase = 'flying';
       stopGlobeRotation();
       document.getElementById('intro-screen').classList.add('exiting');
-      document.getElementById('scroll-location-prompt').classList.remove('visible');
-      scrollProgress = 0;
 
       // Fade out BGM as we zoom in
       fadeAudioOut();
@@ -1692,9 +1502,9 @@ For the "model" field use one of: oak, pine, maple, sapling`;
     /* ─── THEME SYSTEM ─── */
     const MAP_STYLES = {
       light:     { url: 'mapbox://styles/mapbox/light-v11',              buildingColor: '#d8d2c8' },
-      satellite: { url: 'mapbox://styles/mapbox/satellite-streets-v12',  buildingColor: '#c0bfbd' }
+      dark: { url: 'mapbox://styles/mapbox/satellite-streets-v12',  buildingColor: '#c0bfbd' }
     };
-    let currentStyleKey = 'light';
+    let currentStyleKey = 'dark';
 
     function switchTheme(key) {
       if (key === currentStyleKey) return;
@@ -1706,7 +1516,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       });
 
       // Toggle dark class on body
-      document.body.classList.toggle('dark', key === 'satellite');
+      document.body.classList.toggle('dark', key === 'dark');
 
       // Save current camera state
       const center  = map.getCenter();
@@ -1770,8 +1580,8 @@ For the "model" field use one of: oak, pine, maple, sapling`;
     /* ─── RESET ─── */
     function resetToGlobe() {
       // Reset theme to light if needed
-      if (currentStyleKey !== 'light') {
-        switchTheme('light');
+      if (currentStyleKey !== 'dark') {
+        switchTheme('dark');
       }
       stopNatureEffects();
       // Restart BGM for globe/intro screen
@@ -1797,16 +1607,6 @@ For the "model" field use one of: oak, pine, maple, sapling`;
         document.getElementById('intro-screen').classList.remove('exiting');
         document.getElementById('city-search-wrap').classList.remove('visible');
         document.getElementById('city-input').value = '';
-        document.getElementById('scroll-city-input').value = '';
-        // Reset scroll-zoom state
-        scrollProgress = 0;
-        const panel = document.querySelector('.intro-panel');
-        panel.style.opacity = '1';
-        panel.style.transform = 'translateX(0)';
-        panel.style.pointerEvents = 'auto';
-        const globeSide = document.querySelector('.intro-globe-side');
-        globeSide.style.background = '';
-        document.getElementById('scroll-location-prompt').classList.remove('visible');
         startGlobeRotation();
       }, 2600);
     }
@@ -1844,7 +1644,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       el.style.height  = h + 'px';
       el.style.left    = startX + 'px';
       el.style.top     = y + 'px';
-      el.style.background = currentStyleKey === 'satellite'
+      el.style.background = currentStyleKey === 'dark'
         ? `rgba(200, 210, 220, ${opacity})`
         : `rgba(255, 255, 255, ${opacity * 2.5})`;
       overlay.appendChild(el);
