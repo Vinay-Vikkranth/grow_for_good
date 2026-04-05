@@ -8,5 +8,6 @@ Thumbs.db
 # Claude
 .claude/
 
-# Local config with real tokens
+# Local config with real tokens — never commit these
 plantmap/config.js
+config.js
