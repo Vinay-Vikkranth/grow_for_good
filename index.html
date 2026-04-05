@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PlantMap — Find Your Planting Spot</title>
+
+  <!-- Mapbox GL JS v3 -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.css" rel="stylesheet">
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
+
+  <!-- Three.js r158 (global build — used for custom layer) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r158/three.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+  <style>
+    /* ═══════════════════════════════════════
+       DESIGN TOKENS
+    ═══════════════════════════════════════ */
+    :root {
+      --bg-dark:       #060d15;
+      --bg-panel:      rgba(13, 26, 38, 0.92);
+      --bg-card:       #0e1e2e;
+      --green-primary: #22c55e;
+      --green-glow:    rgba(74, 222, 128, 0.35);
+      --green-soft:    #86efac;
+      --accent-gold:   #f59e0b;
+      --text-primary:  #e2f5e9;
+      --text-muted:    #4b6070;
+      --border:        #1a3528;
+      --font-display:  'Syne', sans-serif;
+      --font-body:     'DM Sans', sans-serif;
+      --radius:        16px;
+      --shadow-green:  0 8px 32px rgba(34, 197, 94, 0.18);
+    }
+
+    /* ═══════════════════════════════════════
+       RESET & BASE
+    ═══════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    button { cursor: pointer; }
+
+    /* ═══════════════════════════════════════
+       MAP — full screen base layer
+    ═══════════════════════════════════════ */
+    #map { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+
+    /* ═══════════════════════════════════════
+       INTRO / LOCATION OVERLAY
+    ═══════════════════════════════════════ */
+    #location-prompt {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(ellipse at 50% 40%, #071525f0 0%, #020810ff 100%);
+      z-index: 100;
+      gap: 18px;
+      padding: 40px 24px;
+      text-align: center;
+      transition: opacity 0.6s ease, visibility 0.6s ease;
+    }
+    #location-prompt.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .globe-emoji {
+      font-size: 5.5rem;
+      line-height: 1;
+      animation: float 4s ease-in-out infinite;
+      filter: drop-shadow(0 0 24px rgba(34,197,94,0.5));
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50%       { transform: translateY(-12px); }
+    }
+
+    .tagline {
+      font-size: 0.78rem;
+      color: var(--green-primary);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      font-weight: 600;
+      opacity: 0.8;
+    }
+
+    #location-prompt h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 800;
+      background: linear-gradient(135deg, #22c55e 0%, #86efac 60%, #4ade80 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+    }
+
+    #location-prompt .desc {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 440px;
+      line-height: 1.65;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      max-width: 340px;
+      margin-top: 8px;
+    }
+
+    #allow-location-btn {
+      width: 100%;
+      padding: 16px 28px;
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      color: #000;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1rem;
+      border: none;
+      border-radius: 50px;
+      box-shadow: 0 0 40px rgba(34,197,94,0.45);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    #allow-location-btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 48px rgba(34,197,94,0.65);
+    }
+
+    #search-location-btn {
+      width: 100%;
+      padding: 13px 28px;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-body);
+      font-size: 0.9rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      border-radius: 50px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    #search-location-btn:hover { border-color: var(--green-primary); color: var(--green-soft); }
+
+    /* City search box */
+    #city-search-wrap {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+      max-width: 340px;
+      animation: fadeSlideIn 0.3s ease;
+    }
+    #city-search-wrap.visible { display: flex; }
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    #city-input {
+      width: 100%;
+      padding: 13px 18px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #city-input:focus { border-color: var(--green-primary); }
+    #city-input::placeholder { color: var(--text-muted); }
+
+    #city-go-btn {
+      width: 100%;
+      padding: 13px;
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      color: #000;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.95rem;
+      border: none;
+      border-radius: var(--radius);
+      transition: transform 0.15s;
+    }
+    #city-go-btn:hover { transform: translateY(-2px); }
+
+    /* ═══════════════════════════════════════
+       TOP NAV BAR
+    ═══════════════════════════════════════ */
+    #topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(6, 13, 21, 0.88);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      z-index: 40;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+    }
+    #topbar.visible { opacity: 1; pointer-events: auto; }
+
+    .nav-logo {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.15rem;
+      color: var(--green-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-stats {
+      font-size: 0.82rem;
+      color: var(--green-soft);
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid var(--border);
+      padding: 6px 16px;
+      border-radius: 50px;
+      font-weight: 500;
+    }
+
+    #reset-btn {
+      padding: 8px 18px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 50px;
+      color: var(--text-muted);
+      font-family: var(--font-body);
+      font-size: 0.82rem;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    #reset-btn:hover { border-color: var(--green-primary); color: var(--green-soft); }
+
+    /* ═══════════════════════════════════════
+       ZONE HINT BANNER
+    ═══════════════════════════════════════ */
+    #zone-hint {
+      position: fixed;
+      top: 76px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(6, 13, 21, 0.88);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 50px;
+      padding: 9px 22px;
+      font-size: 0.82rem;
+      color: var(--green-soft);
+      z-index: 35;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s;
+      white-space: nowrap;
+    }
+    #zone-hint.visible { opacity: 1; }
+
+    /* ═══════════════════════════════════════
+       ZONE SIDEBAR
+    ═══════════════════════════════════════ */
+    #zone-sidebar {
+      position: fixed;
+      top: 60px;
+      right: 0;
+      width: 400px;
+      height: calc(100vh - 60px);
+      background: var(--bg-panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-left: 1px solid var(--border);
+      z-index: 50;
+      overflow-y: auto;
+      padding: 32px 28px 40px;
+      transform: translateX(100%);
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    #zone-sidebar.open { transform: translateX(0); }
+
+    /* custom scrollbar */
+    #zone-sidebar::-webkit-scrollbar { width: 3px; }
+    #zone-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    #close-sidebar {
+      position: absolute;
+      top: 14px; right: 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      font-size: 0.9rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    #close-sidebar:hover { border-color: var(--green-primary); color: var(--text-primary); }
+
+    .zone-badge {
+      display: inline-block;
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      color: var(--green-soft);
+      padding: 4px 14px;
+      border-radius: 50px;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    #zone-sidebar h2 {
+      font-family: var(--font-display);
+      font-size: 1.45rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin-bottom: 20px;
+      line-height: 1.2;
+    }
+
+    .zone-meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+
+    .meta-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 13px 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .meta-card .label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .meta-card .value {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 22px 0;
+    }
+
+    #zone-sidebar h3 {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      font-size: 0.83rem;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      line-height: 1.55;
+    }
+
+    /* Upload dropzone */
+    .upload-dropzone {
+      border: 2px dashed rgba(34, 197, 94, 0.5);
+      border-radius: var(--radius);
+      padding: 28px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      min-height: 110px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .upload-dropzone:hover {
+      background: rgba(34, 197, 94, 0.06);
+      border-color: var(--green-primary);
+    }
+    .upload-inner { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .upload-icon  { font-size: 2.2rem; }
+    .upload-inner p { font-size: 0.83rem; color: var(--text-muted); }
+
+    .upload-preview {
+      width: 100%;
+      border-radius: 12px;
+      object-fit: cover;
+      max-height: 200px;
+      display: block;
+    }
+
+    /* CTA button */
+    .cta-btn {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      color: #000;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.98rem;
+      border: none;
+      border-radius: var(--radius);
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-top: 14px;
+    }
+    .cta-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(34, 197, 94, 0.4);
+    }
+    .cta-btn:disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    /* AI loading indicator */
+    #ai-loading {
+      margin-top: 18px;
+      text-align: center;
+    }
+    #ai-loading p {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-top: 10px;
+    }
+    .loader-bar {
+      height: 3px;
+      background: linear-gradient(90deg, transparent 0%, var(--green-primary) 50%, transparent 100%);
+      background-size: 200% 100%;
+      border-radius: 2px;
+      animation: shimmer 1.6s linear infinite;
+    }
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ═══════════════════════════════════════
+       AI RESULTS PANEL (bottom sheet)
+    ═══════════════════════════════════════ */
+    #ai-result-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 400px;   /* leave sidebar space */
+      max-height: 58vh;
+      background: var(--bg-panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-top: 1px solid var(--border);
+      z-index: 45;
+      overflow-y: auto;
+      padding: 26px 32px 32px;
+      border-radius: var(--radius) var(--radius) 0 0;
+      transform: translateY(105%);
+      transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    #ai-result-panel.open { transform: translateY(0); }
+    #ai-result-panel::-webkit-scrollbar { width: 3px; }
+    #ai-result-panel::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .result-header { margin-bottom: 18px; }
+    .result-header h2 {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+    .soil-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .stat-chip {
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      padding: 4px 12px;
+      border-radius: 50px;
+      font-size: 0.78rem;
+      color: var(--green-soft);
+      font-weight: 500;
+    }
+    .location-note {
+      font-size: 0.83rem;
+      color: var(--text-muted);
+      font-style: italic;
+      line-height: 1.5;
+    }
+    #ai-result-panel h3 {
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    /* Tree cards — horizontal scroll */
+    .tree-cards {
+      display: flex;
+      gap: 14px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      scrollbar-width: none;
+    }
+    .tree-cards::-webkit-scrollbar { display: none; }
+
+    .tree-card {
+      min-width: 210px;
+      flex-shrink: 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .tree-card:hover {
+      border-color: var(--green-primary);
+      box-shadow: var(--shadow-green);
+      transform: translateY(-3px);
+    }
+    .tree-card-top { display: flex; align-items: flex-start; gap: 12px; }
+    .tree-number {
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      background: var(--green-primary);
+      color: #000;
+      font-weight: 800;
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .tree-info h4 {
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .tree-info em { font-size: 0.72rem; color: var(--text-muted); font-style: italic; }
+    .tree-meta { display: flex; flex-direction: column; gap: 3px; }
+    .tree-meta span { font-size: 0.75rem; color: var(--text-muted); }
+    .care-tip { font-size: 0.75rem; color: var(--green-soft); line-height: 1.45; }
+    .plant-btn {
+      width: 100%;
+      padding: 9px;
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      color: #000;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.82rem;
+      border: none;
+      border-radius: 10px;
+      transition: transform 0.15s, box-shadow 0.15s;
+      margin-top: 4px;
+    }
+    .plant-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 18px rgba(34, 197, 94, 0.4);
+    }
+
+    /* ═══════════════════════════════════════
+       TOAST
+    ═══════════════════════════════════════ */
+    #toast {
+      position: fixed;
+      bottom: 36px;
+      left: 50%;
+      transform: translateX(-50%) translateY(120px);
+      background: var(--green-primary);
+      color: #000;
+      font-weight: 700;
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      padding: 13px 28px;
+      border-radius: 50px;
+      z-index: 999;
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ═══════════════════════════════════════
+       BOTTOM HINT
+    ═══════════════════════════════════════ */
+    #hint-text {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.74rem;
+      color: rgba(75, 96, 112, 0.8);
+      pointer-events: none;
+      z-index: 30;
+      opacity: 0;
+      transition: opacity 0.6s;
+      white-space: nowrap;
+    }
+    #hint-text.visible { opacity: 1; }
+
+    /* ═══════════════════════════════════════
+       UTILITY
+    ═══════════════════════════════════════ */
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Layer 1: Full-screen Map ── -->
+  <div id="map"></div>
+
+  <!-- ── Layer 2: Intro / Location Overlay ── -->
+  <div id="location-prompt">
+    <div class="globe-emoji">🌍</div>
+    <p class="tagline">AI-powered urban tree planting</p>
+    <h1>Find Your Planting Spot</h1>
+    <p class="desc">We'll zoom into your location and show you where you can legally plant trees today — powered by AI soil analysis.</p>
+
+    <div class="btn-row">
+      <button id="allow-location-btn">📍 Allow Location Access</button>
+      <button id="search-location-btn">🔍 Search a City Instead</button>
+    </div>
+
+    <div id="city-search-wrap">
+      <input type="text" id="city-input" placeholder="e.g. Austin, TX  or  London, UK" autocomplete="off" spellcheck="false">
+      <button id="city-go-btn">🌍 Fly There →</button>
+    </div>
+  </div>
+
+  <!-- ── Layer 3: Top Nav ── -->
+  <nav id="topbar">
+    <div class="nav-logo">🌳 PlantMap</div>
+    <div class="nav-stats" id="trees-planted-count">0 trees placed</div>
+    <button id="reset-btn" onclick="resetToGlobe()">🌍 New Location</button>
+  </nav>
+
+  <!-- ── Zone hint banner ── -->
+  <div id="zone-hint">🌱 Click a glowing zone to analyze soil &amp; plant a tree</div>
+
+  <!-- ── Layer 4: Zone Sidebar (slides in from right) ── -->
+  <div id="zone-sidebar">
+    <button id="close-sidebar" onclick="closeSidebar()">✕</button>
+
+    <div class="zone-badge" id="zone-type-badge">Public Park</div>
+    <h2 id="zone-name">City Park Strip</h2>
+
+    <div class="zone-meta-grid">
+      <div class="meta-card">
+        <span class="label">Soil</span>
+        <span class="value" id="meta-soil">Loamy</span>
+      </div>
+      <div class="meta-card">
+        <span class="label">Sun</span>
+        <span class="value" id="meta-sun">Full Sun</span>
+      </div>
+      <div class="meta-card">
+        <span class="label">Permit</span>
+        <span class="value" id="meta-permit">✅ Not Required</span>
+      </div>
+      <div class="meta-card">
+        <span class="label">Best Season</span>
+        <span class="value" id="meta-season">Spring / Fall</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <h3>📸 Analyze Soil with AI</h3>
+    <p class="subtitle">Upload a photo of this spot and our AI will recommend the perfect tree species to plant here.</p>
+
+    <div id="upload-zone" class="upload-dropzone">
+      <input type="file" id="soil-photo-input" accept="image/*" hidden>
+      <div class="upload-inner">
+        <span class="upload-icon">🌱</span>
+        <p>Tap to upload a photo or take one now</p>
+      </div>
+    </div>
+
+    <button id="analyze-btn" class="cta-btn hidden">🔍 Analyze &amp; Recommend Trees</button>
+
+    <div id="ai-loading" class="hidden">
+      <div class="loader-bar"></div>
+      <p>AI is analyzing your soil…</p>
+    </div>
+  </div>
+
+  <!-- ── Layer 5: AI Results bottom panel ── -->
+  <div id="ai-result-panel"></div>
+
+  <!-- ── Bottom hint ── -->
+  <div id="hint-text">Scroll / pinch to explore &nbsp;•&nbsp; Click glowing zones to plant</div>
+
+  <!-- ── Toast ── -->
+  <div id="toast"></div>
+
+  <!-- ═══════════════════════════════════════════════════
+       APPLICATION SCRIPT
+  ════════════════════════════════════════════════════ -->
+  <!-- Load local config (gitignored) — tokens live here, not in index.html -->
+  <script src="config.js"></script>
+
+  <script>
+    /* ─────────────────────────────────────────────────
+       CONFIG — loaded from config.js (see config.example.js)
+    ───────────────────────────────────────────────── */
+    const CONFIG = Object.assign({
+      MAPBOX_TOKEN: '',
+      OLLAMA_URL:   'http://localhost:11434',
+      OLLAMA_MODEL: 'llava',
+      APP_VERSION:  '1.0.0'
+    }, window.PLANTMAP_CONFIG || {});
+
+    if (!CONFIG.MAPBOX_TOKEN) {
+      document.body.innerHTML = `<div style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#060d15;color:#86efac;flex-direction:column;gap:16px;text-align:center;padding:24px">
+        <div style="font-size:3rem">🌳</div>
+        <h2 style="font-family:sans-serif">Missing Mapbox Token</h2>
+        <p style="color:#4b6070;max-width:400px">Copy <strong>config.example.js</strong> → <strong>config.js</strong> and add your Mapbox token, then refresh.</p>
+      </div>`;
+    }
+
+    /* ─────────────────────────────────────────────────
+       APP STATE
+    ───────────────────────────────────────────────── */
+    const AppState = {
+      phase:              'globe',
+      userLocation:       null,
+      selectedZone:       null,
+      selectedZoneCoords: null,
+      uploadedImageB64:   null,
+      uploadedMediaType:  'image/jpeg',
+      aiResults:          null,
+      placedTrees:        [],
+      mapReady:           false
+    };
+
+    /* ─────────────────────────────────────────────────
+       MAP INITIALISATION
+    ───────────────────────────────────────────────── */
+    mapboxgl.accessToken = CONFIG.MAPBOX_TOKEN;
+
+    const map = new mapboxgl.Map({
+      container:  'map',
+      style:      'mapbox://styles/mapbox/satellite-streets-v12',
+      projection: 'globe',
+      zoom:       1.5,
+      center:     [0, 20],
+      pitch:      0,
+      bearing:    0,
+      antialias:  true
+    });
+
+    // Globe auto-rotation
+    let rotationTimer = null;
+    function startGlobeRotation() {
+      stopGlobeRotation();
+      rotationTimer = setInterval(() => {
+        const c = map.getCenter();
+        map.setCenter([c.lng + 0.28, c.lat]);
+      }, 50);
+    }
+    function stopGlobeRotation() {
+      if (rotationTimer) { clearInterval(rotationTimer); rotationTimer = null; }
+    }
+    startGlobeRotation();
+
+    map.on('style.load', () => {
+      AppState.mapReady = true;
+
+      map.setFog({
+        color:           'rgb(10, 20, 40)',
+        'high-color':    'rgb(30, 60, 120)',
+        'horizon-blend': 0.02,
+        'space-color':   'rgb(2, 5, 15)',
+        'star-intensity': 0.8
+      });
+
+      map.addSource('mapbox-dem', {
+        type:     'raster-dem',
+        url:      'mapbox://mapbox.mapbox-terrain-dem-v1',
+        tileSize: 512,
+        maxzoom:  14
+      });
+
+      map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+    });
+
+    /* ─────────────────────────────────────────────────
+       LOCATION FLOW
+    ───────────────────────────────────────────────── */
+    document.getElementById('allow-location-btn').addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        showToast('⚠️ Geolocation is not supported in this browser');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => flyToLocation(pos.coords.longitude, pos.coords.latitude),
+        (err) => {
+          console.warn('Geolocation error:', err.message);
+          showToast('📍 Location denied — try searching a city instead');
+        }
+      );
+    });
+
+    document.getElementById('search-location-btn').addEventListener('click', () => {
+      const wrap = document.getElementById('city-search-wrap');
+      wrap.classList.toggle('visible');
+      if (wrap.classList.contains('visible')) document.getElementById('city-input').focus();
+    });
+
+    document.getElementById('city-go-btn').addEventListener('click', geocodeAndFly);
+    document.getElementById('city-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') geocodeAndFly();
+    });
+
+    async function geocodeAndFly() {
+      const query = document.getElementById('city-input').value.trim();
+      if (!query) return;
+
+      const btn = document.getElementById('city-go-btn');
+      btn.textContent = '…searching';
+      btn.disabled = true;
+
+      try {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${CONFIG.MAPBOX_TOKEN}&limit=1&types=place,region,country`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Geocoding HTTP ${res.status}`);
+        const json = await res.json();
+
+        if (!json.features || json.features.length === 0) {
+          showToast('🔍 City not found — try a different search');
+          return;
+        }
+        const [lng, lat] = json.features[0].center;
+        flyToLocation(lng, lat);
+      } catch (err) {
+        console.error('Geocoding failed:', err);
+        showToast('❌ Could not search — check your Mapbox token');
+      } finally {
+        btn.textContent = '🌍 Fly There →';
+        btn.disabled = false;
+      }
+    }
+
+    function flyToLocation(lng, lat) {
+      AppState.userLocation = { lng, lat };
+      AppState.phase = 'flying';
+
+      stopGlobeRotation();
+      document.getElementById('location-prompt').classList.add('hidden');
+
+      // Phase 1 — continent zoom
+      map.flyTo({ center: [lng, lat], zoom: 5, pitch: 20, duration: 2000, essential: true });
+
+      // Phase 2 — street-level dive
+      setTimeout(() => {
+        map.flyTo({ center: [lng, lat], zoom: 16, pitch: 62, bearing: -20, duration: 3500, essential: true });
+
+        setTimeout(() => {
+          AppState.phase = 'city';
+          enable3DBuildings();
+          loadPlantingZones(lng, lat);
+
+          document.getElementById('topbar').classList.add('visible');
+          document.getElementById('hint-text').classList.add('visible');
+
+          // Show zone hint briefly
+          const hint = document.getElementById('zone-hint');
+          hint.classList.add('visible');
+          setTimeout(() => hint.classList.remove('visible'), 4500);
+        }, 3600);
+      }, 2200);
+    }
+
+    /* ─────────────────────────────────────────────────
+       3D BUILDINGS
+    ───────────────────────────────────────────────── */
+    function enable3DBuildings() {
+      if (map.getLayer('3d-buildings')) return;
+      map.addLayer({
+        id:           '3d-buildings',
+        source:       'composite',
+        'source-layer': 'building',
+        filter:       ['==', 'extrude', 'true'],
+        type:         'fill-extrusion',
+        minzoom:      14,
+        paint: {
+          'fill-extrusion-color':   '#111e2d',
+          'fill-extrusion-height':  ['get', 'height'],
+          'fill-extrusion-base':    ['get', 'min_height'],
+          'fill-extrusion-opacity': 0.9
+        }
+      });
+    }
+
+    /* ─────────────────────────────────────────────────
+       PLANTING ZONES — GeoJSON
+    ───────────────────────────────────────────────── */
+    function generateMockZones(lng, lat) {
+      const defs = [
+        { offset: [0.0010,  0.0010], name: 'City Park Strip',       type: 'public_park', permit: false, soil: 'Loamy',  sun: 'Full Sun'      },
+        { offset: [-0.0018, 0.0012], name: 'Sidewalk Tree Pit',     type: 'sidewalk',    permit: true,  soil: 'Clay',   sun: 'Partial Shade' },
+        { offset: [0.0016, -0.0010], name: 'Community Garden',      type: 'community',   permit: false, soil: 'Sandy',  sun: 'Full Sun'      },
+        { offset: [-0.0010,-0.0016], name: 'Vacant Lot',            type: 'vacant',      permit: true,  soil: 'Silty',  sun: 'Full Shade'    },
+        { offset: [0.0028,  0.0005], name: 'Median Planting Zone',  type: 'median',      permit: true,  soil: 'Rocky',  sun: 'Full Sun'      }
+      ];
+
+      const features = defs.map((d, i) => {
+        const clng = lng + d.offset[0];
+        const clat = lat + d.offset[1];
+        const s = 0.00042;
+        return {
+          type: 'Feature',
+          properties: {
+            id: i,
+            name: d.name,
+            type: d.type,
+            permit_required: d.permit,
+            soil_type: d.soil,
+            sun_exposure: d.sun,
+            best_season: 'Spring / Fall'
+          },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[
+              [clng - s, clat - s],
+              [clng + s, clat - s],
+              [clng + s, clat + s],
+              [clng - s, clat + s],
+              [clng - s, clat - s]
+            ]]
+          }
+        };
+      });
+
+      return { type: 'FeatureCollection', features };
+    }
+
+    let pulseTimer = null;
+
+    function loadPlantingZones(lng, lat) {
+      const geojson = generateMockZones(lng, lat);
+
+      if (map.getSource('planting-zones')) {
+        map.getSource('planting-zones').setData(geojson);
+        return;
+      }
+
+      map.addSource('planting-zones', { type: 'geojson', data: geojson });
+
+      map.addLayer({
+        id: 'zones-fill',
+        type: 'fill',
+        source: 'planting-zones',
+        minzoom: 14,
+        paint: {
+          'fill-color': [
+            'match', ['get', 'type'],
+            'public_park', '#22c55e',
+            'sidewalk',    '#84cc16',
+            'community',   '#10b981',
+            'vacant',      '#f59e0b',
+            'median',      '#06b6d4',
+            '#22c55e'
+          ],
+          'fill-opacity': 0.45
+        }
+      });
+
+      map.addLayer({
+        id: 'zones-outline',
+        type: 'line',
+        source: 'planting-zones',
+        minzoom: 14,
+        paint: {
+          'line-color': '#4ade80',
+          'line-width': 2.5,
+          'line-blur':  1
+        }
+      });
+
+      // Pulse opacity animation
+      let opacity = 0.45;
+      let growing = false;
+      if (pulseTimer) clearInterval(pulseTimer);
+      pulseTimer = setInterval(() => {
+        opacity += growing ? 0.007 : -0.007;
+        if (opacity >= 0.62) growing = false;
+        if (opacity <= 0.28) growing = true;
+        if (map.getLayer('zones-fill')) {
+          map.setPaintProperty('zones-fill', 'fill-opacity', opacity);
+        }
+      }, 50);
+
+      map.on('click', 'zones-fill', (e) => {
+        if (!e.features.length) return;
+        openZoneSidebar(e.features[0].properties, e.lngLat);
+      });
+      map.on('mouseenter', 'zones-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'zones-fill', () => { map.getCanvas().style.cursor = ''; });
+    }
+
+    /* ─────────────────────────────────────────────────
+       ZONE SIDEBAR
+    ───────────────────────────────────────────────── */
+    function openZoneSidebar(props, coords) {
+      AppState.selectedZone       = props;
+      AppState.selectedZoneCoords = coords;
+      AppState.phase              = 'zone_selected';
+
+      document.getElementById('zone-name').textContent       = props.name;
+      document.getElementById('zone-type-badge').textContent = props.type.replace(/_/g, ' ');
+      document.getElementById('meta-soil').textContent       = props.soil_type;
+      document.getElementById('meta-sun').textContent        = props.sun_exposure;
+      document.getElementById('meta-permit').textContent     = props.permit_required ? '⚠️ Required' : '✅ Not Required';
+      document.getElementById('meta-season').textContent     = props.best_season;
+
+      // Reset upload area
+      AppState.uploadedImageB64  = null;
+      AppState.uploadedMediaType = 'image/jpeg';
+      document.getElementById('soil-photo-input').value = '';
+      document.getElementById('upload-zone').innerHTML = `
+        <div class="upload-inner">
+          <span class="upload-icon">🌱</span>
+          <p>Tap to upload a photo or take one now</p>
+        </div>`;
+      document.getElementById('analyze-btn').classList.add('hidden');
+      document.getElementById('ai-loading').classList.add('hidden');
+
+      document.getElementById('zone-sidebar').classList.add('open');
+    }
+
+    function closeSidebar() {
+      document.getElementById('zone-sidebar').classList.remove('open');
+      document.getElementById('ai-result-panel').classList.remove('open');
+      AppState.phase = 'city';
+    }
+
+    /* ─────────────────────────────────────────────────
+       SOIL PHOTO UPLOAD
+    ───────────────────────────────────────────────── */
+    document.getElementById('upload-zone').addEventListener('click', () => {
+      document.getElementById('soil-photo-input').click();
+    });
+
+    document.getElementById('soil-photo-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // Detect real media type
+      const mediaType = file.type || 'image/jpeg';
+      AppState.uploadedMediaType = ['image/jpeg','image/png','image/gif','image/webp'].includes(mediaType)
+        ? mediaType : 'image/jpeg';
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        AppState.uploadedImageB64 = ev.target.result.split(',')[1];
+
+        const uploadZone = document.getElementById('upload-zone');
+        uploadZone.innerHTML = `<img class="upload-preview" src="${ev.target.result}" alt="Soil photo preview">`;
+        document.getElementById('analyze-btn').classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    });
+
+    /* ─────────────────────────────────────────────────
+       CLAUDE AI ANALYSIS
+    ───────────────────────────────────────────────── */
+    document.getElementById('analyze-btn').addEventListener('click', analyzeWithClaude);
+
+    async function analyzeWithClaude() {
+      if (!AppState.uploadedImageB64) return;
+
+      AppState.phase = 'analyzing';
+      const analyzeBtn = document.getElementById('analyze-btn');
+      analyzeBtn.classList.add('hidden');
+      document.getElementById('ai-loading').classList.remove('hidden');
+
+      const zone = AppState.selectedZone;
+      const zoneContext = zone
+        ? `Zone: ${zone.name}. Known soil: ${zone.soil_type}. Known sun: ${zone.sun_exposure}.`
+        : 'An urban planting area.';
+
+      const prompt = `You are a professional urban forester and soil scientist.
+
+Analyze this image of a planting location. ${zoneContext}
+
+Based on what you observe:
+1. Identify the likely soil type (clay, loam, sand, silt, rocky, etc.)
+2. Estimate moisture level (dry, moderate, moist)
+3. Assess sunlight conditions visible in the image
+4. Recommend exactly 3 tree species ideal for urban planting in temperate US climates that would thrive here
+5. For each species: common name, scientific name, expected mature height, growth rate, one actionable care tip
+
+Return ONLY valid JSON in this exact schema — no markdown fences, no extra text:
+{
+  "soil_type": "...",
+  "moisture": "...",
+  "sunlight": "...",
+  "location_notes": "One sentence describing what you see.",
+  "recommendations": [
+    {
+      "common_name": "...",
+      "scientific_name": "...",
+      "height": "...",
+      "growth_rate": "...",
+      "care_tip": "...",
+      "model": "oak"
+    }
+  ]
+}
+
+For the "model" field use one of: oak, pine, maple, sapling`;
+
+      try {
+        // ── Ollama vision API (runs 100% locally, no API key needed) ──
+        const response = await fetch(`${CONFIG.OLLAMA_URL}/api/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model:  CONFIG.OLLAMA_MODEL,
+            prompt: prompt,
+            images: [AppState.uploadedImageB64],  // base64, no data-URI prefix
+            stream: false,
+            options: { temperature: 0.2, num_predict: 1024 }
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text().catch(() => '');
+          // If Ollama isn't running we get a network error (caught below),
+          // but a 404 means the model isn't pulled yet.
+          if (response.status === 404) {
+            throw new Error(`Model "${CONFIG.OLLAMA_MODEL}" not found. Run: ollama pull ${CONFIG.OLLAMA_MODEL}`);
+          }
+          throw new Error(`Ollama HTTP ${response.status}: ${errText.slice(0, 120)}`);
+        }
+
+        const data    = await response.json();
+        const rawText = (data.response || '').replace(/```json|```/g, '').trim();
+
+        let result;
+        try {
+          result = JSON.parse(rawText);
+        } catch {
+          // Model sometimes wraps JSON in prose — extract the JSON object
+          const match = rawText.match(/\{[\s\S]*\}/);
+          if (!match) throw new Error('Model did not return valid JSON. Try a larger model.');
+          result = JSON.parse(match[0]);
+        }
+
+        document.getElementById('ai-loading').classList.add('hidden');
+        AppState.aiResults = result;
+        AppState.phase     = 'results';
+        renderAIResults(result);
+
+      } catch (err) {
+        console.error('AI analysis failed:', err);
+        document.getElementById('ai-loading').classList.add('hidden');
+        analyzeBtn.classList.remove('hidden');
+        AppState.phase = 'zone_selected';
+
+        if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('ECONNREFUSED')) {
+          showToast('⚠️ Ollama not running — start it with: ollama serve');
+        } else if (err.message.includes('not found') || err.message.includes('pull')) {
+          showToast(`⚠️ ${err.message}`);
+        } else {
+          showToast('❌ Analysis failed: ' + err.message.slice(0, 70));
+        }
+      }
+    }
+
+    /* ─────────────────────────────────────────────────
+       RENDER AI RESULTS
+    ───────────────────────────────────────────────── */
+    function renderAIResults(data) {
+      const panel = document.getElementById('ai-result-panel');
+
+      const safeName = (s) => s.replace(/['"<>]/g, '');
+
+      panel.innerHTML = `
+        <div class="result-header">
+          <h2>🌿 AI Soil Analysis</h2>
+          <div class="soil-stats">
+            <span class="stat-chip">🪨 ${data.soil_type}</span>
+            <span class="stat-chip">💧 ${data.moisture}</span>
+            <span class="stat-chip">☀️ ${data.sunlight}</span>
+          </div>
+          <p class="location-note">${data.location_notes}</p>
+        </div>
+        <h3>Recommended Trees — click a card to place on map</h3>
+        <div class="tree-cards">
+          ${(data.recommendations || []).map((tree, i) => `
+            <div class="tree-card"
+                 onclick="plantTree(${i})"
+                 role="button"
+                 tabindex="0"
+                 aria-label="Plant ${safeName(tree.common_name)}">
+              <div class="tree-card-top">
+                <div class="tree-number">${i + 1}</div>
+                <div class="tree-info">
+                  <h4>${tree.common_name}</h4>
+                  <em>${tree.scientific_name}</em>
+                </div>
+              </div>
+              <div class="tree-meta">
+                <span>📏 ${tree.height}</span>
+                <span>⚡ ${tree.growth_rate} growth</span>
+              </div>
+              <p class="care-tip">💡 ${tree.care_tip}</p>
+              <button class="plant-btn" onclick="event.stopPropagation(); plantTree(${i})">
+                🌱 Place on Map
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      panel.classList.add('open');
+    }
+
+    function plantTree(index) {
+      const recs   = AppState.aiResults?.recommendations;
+      const coords = AppState.selectedZoneCoords;
+      if (!recs || !recs[index] || !coords) {
+        showToast('⚠️ Select a zone first, then analyze soil');
+        return;
+      }
+      const tree = recs[index];
+      place3DTree(coords.lng, coords.lat, tree.model || 'oak', tree.common_name);
+    }
+
+    /* ─────────────────────────────────────────────────
+       THREE.JS — PROCEDURAL TREE (Custom Mapbox Layer)
+    ───────────────────────────────────────────────── */
+    function buildProceduralTree(kind) {
+      const root = new THREE.Group();
+
+      // Trunk
+      const trunkMat = new THREE.MeshLambertMaterial({ color: 0x7c4a1e });
+      const trunk    = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.22, 1.6, 8), trunkMat);
+      trunk.position.y = 0.8;
+      root.add(trunk);
+
+      switch (kind) {
+        case 'pine': {
+          // Layered conical pine
+          const piMat = new THREE.MeshLambertMaterial({ color: 0x145a32 });
+          [[1.5, 1.05, 8], [2.2, 0.88, 7], [2.85, 0.72, 6]].forEach(([y, r, seg]) => {
+            const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 1.15, seg), piMat);
+            cone.position.y = y;
+            root.add(cone);
+          });
+          break;
+        }
+        case 'maple': {
+          // Autumnal layered spheres
+          const colors = [0xb91c1c, 0xdc2626, 0xef4444];
+          [[0, 2.8, 0], [0.65, 2.35, 0.4], [-0.55, 2.5, -0.3]].forEach(([x, y, z], i) => {
+            const r    = 0.95 - i * 0.12;
+            const leaf = new THREE.Mesh(
+              new THREE.SphereGeometry(r, 8, 6),
+              new THREE.MeshLambertMaterial({ color: colors[i] })
+            );
+            leaf.position.set(x, y, z);
+            root.add(leaf);
+          });
+          break;
+        }
+        default: { // oak / sapling
+          const greens = [0x15803d, 0x16a34a, 0x22c55e];
+          [[0, 2.85, 0], [0.7, 2.38, 0.38], [-0.58, 2.5, -0.28]].forEach(([x, y, z], i) => {
+            const r    = 0.95 - i * 0.14;
+            const leaf = new THREE.Mesh(
+              new THREE.SphereGeometry(r, 8, 6),
+              new THREE.MeshLambertMaterial({ color: greens[i] })
+            );
+            leaf.position.set(x, y, z);
+            root.add(leaf);
+          });
+        }
+      }
+
+      return root;
+    }
+
+    function place3DTree(lng, lat, modelName, displayName) {
+      const origin   = [lng, lat];
+      const mercator = mapboxgl.MercatorCoordinate.fromLngLat(origin, 0);
+
+      const transform = {
+        translateX: mercator.x,
+        translateY: mercator.y,
+        translateZ: mercator.z,
+        rotateX:    Math.PI / 2,
+        rotateY:    0,
+        rotateZ:    0,
+        scale:      mercator.meterInMercatorCoordinateUnits() * 15
+      };
+
+      const layerId = `tree-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+      const customLayer = {
+        id:            layerId,
+        type:          'custom',
+        renderingMode: '3d',
+
+        onAdd(map, gl) {
+          this.camera = new THREE.Camera();
+          this.scene  = new THREE.Scene();
+
+          this.scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+          const sun = new THREE.DirectionalLight(0xfff4c2, 1.1);
+          sun.position.set(0, -70, 100).normalize();
+          this.scene.add(sun);
+
+          // Build tree and animate growth
+          const tree = buildProceduralTree(modelName);
+          tree.scale.setScalar(0.01);
+          this.scene.add(tree);
+          this._tree = tree;
+
+          let t = 0;
+          const grow = setInterval(() => {
+            t = Math.min(t + 0.032, 1);
+            const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;  // ease-in-out
+            tree.scale.setScalar(e);
+            map.triggerRepaint();
+            if (t >= 1) clearInterval(grow);
+          }, 20);
+
+          this.renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: true });
+          this.renderer.autoClear = false;
+          this._map = map;
+        },
+
+        render(gl, matrix) {
+          const rotX = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1,0,0), transform.rotateX);
+          const rotY = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0,1,0), transform.rotateY);
+          const rotZ = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0,0,1), transform.rotateZ);
+
+          const m = new THREE.Matrix4().fromArray(matrix);
+          const l = new THREE.Matrix4()
+            .makeTranslation(transform.translateX, transform.translateY, transform.translateZ)
+            .scale(new THREE.Vector3(transform.scale, -transform.scale, transform.scale))
+            .multiply(rotX).multiply(rotY).multiply(rotZ);
+
+          this.camera.projectionMatrix = m.multiply(l);
+          this.renderer.resetState();
+          this.renderer.render(this.scene, this.camera);
+          this._map.triggerRepaint();
+        }
+      };
+
+      map.addLayer(customLayer);
+
+      AppState.placedTrees.push({ layerId, lng, lat, name: displayName });
+      const count = AppState.placedTrees.length;
+      document.getElementById('trees-planted-count').textContent =
+        `${count} tree${count !== 1 ? 's' : ''} placed`;
+
+      showToast(`🌳 ${displayName} planted! ${count} tree${count !== 1 ? 's' : ''} placed today.`);
+    }
+
+    /* ─────────────────────────────────────────────────
+       TOAST
+    ───────────────────────────────────────────────── */
+    let toastTimer = null;
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    /* ─────────────────────────────────────────────────
+       RESET TO GLOBE
+    ───────────────────────────────────────────────── */
+    function resetToGlobe() {
+      // Remove placed tree custom layers
+      AppState.placedTrees.forEach(({ layerId }) => {
+        try { if (map.getLayer(layerId)) map.removeLayer(layerId); } catch {}
+      });
+      AppState.placedTrees = [];
+      document.getElementById('trees-planted-count').textContent = '0 trees placed';
+
+      // Remove zone layers
+      ['zones-fill', 'zones-outline', '3d-buildings'].forEach(id => {
+        try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
+      });
+      try { if (map.getSource('planting-zones')) map.removeSource('planting-zones'); } catch {}
+
+      if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null; }
+
+      // Reset UI
+      document.getElementById('topbar').classList.remove('visible');
+      document.getElementById('hint-text').classList.remove('visible');
+      document.getElementById('zone-hint').classList.remove('visible');
+      document.getElementById('zone-sidebar').classList.remove('open');
+      document.getElementById('ai-result-panel').classList.remove('open');
+
+      // Reset state
+      AppState.phase              = 'globe';
+      AppState.userLocation       = null;
+      AppState.selectedZone       = null;
+      AppState.selectedZoneCoords = null;
+      AppState.uploadedImageB64   = null;
+      AppState.aiResults          = null;
+
+      // Fly back and restart globe
+      map.flyTo({ center: [0, 20], zoom: 1.5, pitch: 0, bearing: 0, duration: 2500, essential: true });
+
+      setTimeout(() => {
+        const prompt = document.getElementById('location-prompt');
+        prompt.classList.remove('hidden');
+        document.getElementById('city-search-wrap').classList.remove('visible');
+        document.getElementById('city-input').value = '';
+        startGlobeRotation();
+      }, 2600);
+    }
+  </script>
+</body>
+</html>
