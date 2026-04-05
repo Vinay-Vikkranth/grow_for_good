@@ -1064,19 +1064,6 @@
     }
     startGlobeRotation();
 
-    // Start BGM on page load (needs user gesture — also retried on first click)
-    initBGM();
-    setupLoopPoint();
-    function tryPlayBGM() {
-      if (!NatureEngine.audioMuted) fadeAudioIn();
-      document.removeEventListener('click', tryPlayBGM);
-      document.removeEventListener('touchstart', tryPlayBGM);
-    }
-    // Attempt autoplay immediately; if blocked, retry on first interaction
-    tryPlayBGM();
-    document.addEventListener('click', tryPlayBGM, { once: false });
-    document.addEventListener('touchstart', tryPlayBGM, { once: false });
-
     map.on('style.load', () => {
       AppState.mapReady = true;
 
@@ -1796,6 +1783,20 @@ For the "model" field use one of: oak, pine, maple, sapling`;
 
       fadeAudioOut();
     }
+
+    // Start BGM on page load (needs user gesture — also retried on first click)
+    initBGM();
+    setupLoopPoint();
+    function tryPlayBGM() {
+      if (!NatureEngine.audioMuted) fadeAudioIn();
+      document.removeEventListener('click', tryPlayBGM);
+      document.removeEventListener('touchstart', tryPlayBGM);
+    }
+    // Attempt autoplay immediately; if blocked, retry on first interaction
+    tryPlayBGM();
+    document.addEventListener('click', tryPlayBGM, { once: false });
+    document.addEventListener('touchstart', tryPlayBGM, { once: false });
+
   </script>
 </body>
 </html>
