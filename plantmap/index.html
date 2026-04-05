@@ -1678,9 +1678,9 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       // Smooth fade in over 3s to a very mild level
       audio.volume = 0;
       let v = 0;
-      const target = 0.12;
+      const target = 0.03;
       const fade = setInterval(() => {
-        v = Math.min(v + 0.004, target);
+        v = Math.min(v + 0.001, target);
         audio.volume = v;
         if (v >= target) clearInterval(fade);
       }, 60);
