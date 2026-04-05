@@ -1603,8 +1603,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       active: false,
       clouds: [],
       cloudTimer: null,
-      audioCtx: null,
-      audioNodes: [],
+      bgm: null,
       audioMuted: false,
     };
 
@@ -1657,110 +1656,41 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       cloudRAF = requestAnimationFrame(animateClouds);
     }
 
-    /* ─── SMOOTH AMBIENT AUDIO (Web Audio API) ─── */
-    function initAmbientAudio() {
-      if (NatureEngine.audioCtx) return;
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      NatureEngine.audioCtx = ctx;
-
-      // Master gain
-      const masterGain = ctx.createGain();
-      masterGain.gain.value = 0;
-      masterGain.connect(ctx.destination);
-      NatureEngine.masterGain = masterGain;
-
-      // ── Layer 1: Deep soft wind ──
-      const windBuf = ctx.createBuffer(2, ctx.sampleRate * 6, ctx.sampleRate);
-      for (let ch = 0; ch < 2; ch++) {
-        const d = windBuf.getChannelData(ch);
-        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1);
-      }
-      const windSrc = ctx.createBufferSource();
-      windSrc.buffer = windBuf;
-      windSrc.loop = true;
-      const windLP = ctx.createBiquadFilter();
-      windLP.type = 'lowpass';
-      windLP.frequency.value = 280;
-      windLP.Q.value = 0.4;
-      const windGain = ctx.createGain();
-      windGain.gain.value = 0.06;
-      windSrc.connect(windLP).connect(windGain).connect(masterGain);
-      windSrc.start();
-
-      // Slow LFO to breathe the wind
-      const lfo1 = ctx.createOscillator();
-      lfo1.type = 'sine';
-      lfo1.frequency.value = 0.08;
-      const lfo1G = ctx.createGain();
-      lfo1G.gain.value = 120;
-      lfo1.connect(lfo1G).connect(windLP.frequency);
-      lfo1.start();
-
-      // ── Layer 2: High-frequency air / leaves rustle ──
-      const rustBuf = ctx.createBuffer(2, ctx.sampleRate * 4, ctx.sampleRate);
-      for (let ch = 0; ch < 2; ch++) {
-        const d = rustBuf.getChannelData(ch);
-        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1);
-      }
-      const rustSrc = ctx.createBufferSource();
-      rustSrc.buffer = rustBuf;
-      rustSrc.loop = true;
-      const rustBP = ctx.createBiquadFilter();
-      rustBP.type = 'bandpass';
-      rustBP.frequency.value = 3200;
-      rustBP.Q.value = 0.3;
-      const rustGain = ctx.createGain();
-      rustGain.gain.value = 0.012;
-      rustSrc.connect(rustBP).connect(rustGain).connect(masterGain);
-      rustSrc.start();
-
-      // Slow modulation on rustle volume
-      const lfo2 = ctx.createOscillator();
-      lfo2.type = 'sine';
-      lfo2.frequency.value = 0.12;
-      const lfo2G = ctx.createGain();
-      lfo2G.gain.value = 0.006;
-      lfo2.connect(lfo2G).connect(rustGain.gain);
-      lfo2.start();
-
-      // ── Layer 3: Sub-bass drone (warmth) ──
-      const drone = ctx.createOscillator();
-      drone.type = 'sine';
-      drone.frequency.value = 62;
-      const droneGain = ctx.createGain();
-      droneGain.gain.value = 0.018;
-      drone.connect(droneGain).connect(masterGain);
-      drone.start();
-
-      // Very slow pitch wobble on drone
-      const lfo3 = ctx.createOscillator();
-      lfo3.type = 'sine';
-      lfo3.frequency.value = 0.04;
-      const lfo3G = ctx.createGain();
-      lfo3G.gain.value = 3;
-      lfo3.connect(lfo3G).connect(drone.frequency);
-      lfo3.start();
-
-      NatureEngine.audioNodes.push(windSrc, rustSrc, drone, lfo1, lfo2, lfo3);
+    /* ─── BGM AUDIO (MP3 — starts at 22s, loops) ─── */
+    function initBGM() {
+      if (NatureEngine.bgm) return;
+      const audio = new Audio('assets/bgm.mp3');
+      audio.loop = false; // We handle looping manually to restart from 22s
+      audio.volume = 0;
+      NatureEngine.bgm = audio;
     }
 
     function fadeAudioIn() {
-      if (!NatureEngine.audioCtx || !NatureEngine.masterGain) return;
-      if (NatureEngine.audioCtx.state === 'suspended') NatureEngine.audioCtx.resume();
-      if (!NatureEngine.audioMuted) {
-        const now = NatureEngine.audioCtx.currentTime;
-        NatureEngine.masterGain.gain.cancelScheduledValues(now);
-        NatureEngine.masterGain.gain.setValueAtTime(NatureEngine.masterGain.gain.value, now);
-        NatureEngine.masterGain.gain.linearRampToValueAtTime(1, now + 3);
-      }
+      const audio = NatureEngine.bgm;
+      if (!audio || NatureEngine.audioMuted) return;
+      audio.currentTime = 22;
+      audio.play().catch(() => {});
+      // Smooth fade in over 3 seconds
+      audio.volume = 0;
+      let v = 0;
+      const fade = setInterval(() => {
+        v = Math.min(v + 0.02, 0.5);
+        audio.volume = v;
+        if (v >= 0.5) clearInterval(fade);
+      }, 60);
+      NatureEngine._fadeIn = fade;
     }
 
     function fadeAudioOut() {
-      if (!NatureEngine.audioCtx || !NatureEngine.masterGain) return;
-      const now = NatureEngine.audioCtx.currentTime;
-      NatureEngine.masterGain.gain.cancelScheduledValues(now);
-      NatureEngine.masterGain.gain.setValueAtTime(NatureEngine.masterGain.gain.value, now);
-      NatureEngine.masterGain.gain.linearRampToValueAtTime(0, now + 2);
+      const audio = NatureEngine.bgm;
+      if (!audio) return;
+      if (NatureEngine._fadeIn) clearInterval(NatureEngine._fadeIn);
+      let v = audio.volume;
+      const fade = setInterval(() => {
+        v = Math.max(v - 0.025, 0);
+        audio.volume = v;
+        if (v <= 0) { clearInterval(fade); audio.pause(); }
+      }, 60);
     }
 
     function toggleAmbientSound() {
@@ -1773,6 +1703,18 @@ For the "model" field use one of: oak, pine, maple, sapling`;
         btn.textContent = '🔊';
         if (NatureEngine.active) fadeAudioIn();
       }
+    }
+
+    // When the track ends, restart from 22s for seamless looping
+    function setupLoopPoint() {
+      const audio = NatureEngine.bgm;
+      if (!audio) return;
+      audio.addEventListener('ended', () => {
+        if (NatureEngine.active && !NatureEngine.audioMuted) {
+          audio.currentTime = 22;
+          audio.play().catch(() => {});
+        }
+      });
     }
 
     /* ─── START / STOP NATURE ─── */
@@ -1794,7 +1736,8 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       cloudRAF = requestAnimationFrame(animateClouds);
 
       // Audio
-      initAmbientAudio();
+      initBGM();
+      setupLoopPoint();
       if (!NatureEngine.audioMuted) {
         document.getElementById('sound-toggle').textContent = '🔊';
         fadeAudioIn();
