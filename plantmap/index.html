@@ -446,6 +446,162 @@
     }
     #reset-btn:hover { border-color: var(--green); color: var(--green); }
 
+    #scan-btn {
+      padding: 11px 28px;
+      background: var(--green);
+      border: 2px solid var(--green);
+      color: var(--bg);
+      font-family: var(--font-display);
+      font-size: 1rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+      transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 0 18px rgba(61, 92, 46, 0.3);
+    }
+    #scan-btn:hover { background: var(--green-soft); transform: translateX(3px); box-shadow: 0 0 28px rgba(61, 92, 46, 0.5); }
+    #scan-btn.scanning {
+      animation: pulse-btn 1s ease infinite;
+      box-shadow: 0 0 32px rgba(61, 92, 46, 0.6);
+    }
+    @keyframes pulse-btn {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* ─── DROP PIN MARKER ─── */
+    .drop-pin-marker {
+      width: 32px; height: 32px;
+      background: var(--green);
+      border: 2px solid var(--bg);
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+      cursor: pointer;
+      animation: dropBounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes dropBounce {
+      0% { transform: rotate(-45deg) translateY(-40px); opacity: 0; }
+      100% { transform: rotate(-45deg) translateY(0); opacity: 1; }
+    }
+
+    /* ─── AI SCAN PROGRESS OVERLAY ─── */
+    #ai-scan-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      background: rgba(0,0,0,0.55);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s;
+    }
+    #ai-scan-overlay.active { opacity: 1; pointer-events: auto; }
+    .scan-ring {
+      width: 80px; height: 80px;
+      border: 3px solid transparent;
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spinRing 1s linear infinite;
+    }
+    @keyframes spinRing { to { transform: rotate(360deg); } }
+    .scan-label {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.85);
+    }
+    .scan-sublabel {
+      font-family: var(--font-mono);
+      font-size: 0.52rem;
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 0.1em;
+    }
+
+    /* ─── ACTION CARD in sidebar ─── */
+    .action-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 16px;
+      margin-top: 6px;
+      clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+    }
+    .action-score {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .score-circle {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      color: var(--bg);
+      flex-shrink: 0;
+    }
+    .score-circle.high   { background: #3d8c28; }
+    .score-circle.medium { background: #b8860b; }
+    .score-circle.low    { background: #a43030; }
+    .score-label {
+      font-size: 0.54rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .score-label strong {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--text);
+      letter-spacing: 0.05em;
+    }
+    .action-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .action-list li {
+      font-size: 0.64rem;
+      color: var(--text-mid);
+      padding: 8px 10px;
+      background: var(--bg-card2);
+      border-left: 2px solid var(--green);
+      line-height: 1.5;
+    }
+    .action-list li .action-tag {
+      display: inline-block;
+      font-size: 0.48rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-right: 6px;
+      font-weight: 700;
+    }
+
+    /* ─── AI-DETECTED SPOTS ─── */
+    .ai-spot-marker {
+      width: 22px; height: 22px;
+      background: rgba(122, 205, 95, 0.6);
+      border: 2px solid #7acd5f;
+      border-radius: 50%;
+      box-shadow: 0 0 12px rgba(122, 205, 95, 0.5);
+      cursor: pointer;
+      animation: spotPulse 2s ease-in-out infinite;
+    }
+    @keyframes spotPulse {
+      0%, 100% { box-shadow: 0 0 12px rgba(122, 205, 95, 0.4); transform: scale(1); }
+      50%      { box-shadow: 0 0 24px rgba(122, 205, 95, 0.7); transform: scale(1.15); }
+    }
+
     .nav-right { display: flex; align-items: center; gap: 10px; }
 
     /* ═══════════════════════════════════════════
@@ -916,6 +1072,7 @@
     <div class="nav-logo">PLANTMAP</div>
     <div class="nav-stats" id="trees-planted-count">0 TREES PLACED</div>
     <div class="nav-right">
+      <button id="scan-btn" onclick="scanPlantingZones()">⚡ SCAN FOR PLANTING SPOTS</button>
       <button id="reset-btn" onclick="resetToGlobe()">↩ NEW LOCATION</button>
     </div>
   </nav>
@@ -928,7 +1085,7 @@
   </div>
 
   <!-- ZONE HINT -->
-  <div id="zone-hint">↓ CLICK A GLOWING ZONE TO ANALYZE SOIL &amp; PLANT</div>
+  <div id="zone-hint">⚡ HIT SCAN TO DETECT PLANTING SPOTS — OR CLICK ANYWHERE TO DROP A PIN</div>
 
   <!-- ZONE SIDEBAR -->
   <div id="zone-sidebar">
@@ -968,13 +1125,22 @@
       <div class="loader-bar"></div>
       <p>AI analyzing your soil...</p>
     </div>
+    <div class="divider"></div>
+    <div id="zone-action-card"></div>
   </div>
 
   <!-- AI RESULTS -->
   <div id="ai-result-panel"></div>
 
+  <!-- AI SCAN OVERLAY -->
+  <div id="ai-scan-overlay">
+    <div class="scan-ring"></div>
+    <div class="scan-label">AI ANALYZING SATELLITE VIEW</div>
+    <div class="scan-sublabel">Detecting green spaces & planting opportunities...</div>
+  </div>
+
   <!-- BOTTOM HINT -->
-  <div id="hint-text">SCROLL / PINCH TO EXPLORE &nbsp;·&nbsp; CLICK GLOWING ZONES TO PLANT</div>
+  <div id="hint-text">SCROLL / PINCH TO EXPLORE &nbsp;·&nbsp; CLICK ZONES OR ANYWHERE TO ANALYZE &amp; PLANT</div>
 
   <!-- TOAST -->
   <div id="toast"></div>
@@ -1007,7 +1173,8 @@
       uploadedMediaType:  'image/jpeg',
       aiResults:          null,
       placedTrees:        [],
-      mapReady:           false
+      mapReady:           false,
+      detectedCity:       null
     };
 
     /* ─── MAP INIT ─── */
@@ -1163,6 +1330,7 @@
         const json = await res.json();
         if (!json.features?.length) { showToast('CITY NOT FOUND — TRY AGAIN'); return; }
         const [lng, lat] = json.features[0].center;
+        AppState.detectedCity = json.features[0].place_name || json.features[0].text || '';
         flyToLocation(lng, lat);
       } catch (err) {
         showToast('SEARCH FAILED — CHECK YOUR TOKEN');
@@ -1197,6 +1365,7 @@
         AppState.phase = 'city';
         enable3DBuildings();
         loadPlantingZones(lng, lat);
+        setupDropPin();
         document.getElementById('topbar').classList.add('visible');
         document.getElementById('hint-text').classList.add('visible');
         const hint = document.getElementById('zone-hint');
@@ -1225,7 +1394,103 @@
       });
     }
 
-    /* ─── PLANTING ZONES ─── */
+    /* ─── PLANTING ZONES (Overpass API — real OSM data) ─── */
+
+    function categorizeZone(tags) {
+      if (tags.leisure === 'garden' || tags.garden)     return { key: 'community', label: 'Community Garden', permit: false };
+      if (tags.leisure === 'park')                      return { key: 'public_park', label: 'Public Park', permit: false };
+      if (tags.leisure === 'nature_reserve')             return { key: 'public_park', label: 'Nature Reserve', permit: true };
+      if (tags.landuse === 'grass' || tags.natural === 'grassland') return { key: 'median', label: 'Green Space', permit: false };
+      if (tags.landuse === 'meadow')                    return { key: 'median', label: 'Meadow', permit: false };
+      if (tags.landuse === 'village_green')              return { key: 'community', label: 'Village Green', permit: false };
+      if (tags.landuse === 'greenfield')                 return { key: 'vacant', label: 'Vacant Land', permit: true };
+      if (tags.landuse === 'brownfield')                 return { key: 'vacant', label: 'Brownfield', permit: true };
+      if (tags.leisure === 'pitch')                      return { key: 'sidewalk', label: 'Open Field', permit: true };
+      if (tags.natural === 'scrub')                      return { key: 'vacant', label: 'Scrubland', permit: true };
+      if (tags.landuse === 'recreation_ground')          return { key: 'public_park', label: 'Recreation Ground', permit: false };
+      return { key: 'public_park', label: 'Green Area', permit: false };
+    }
+
+    async function fetchRealPlantingZones(lng, lat) {
+      const radius = 800;
+      const query = `
+        [out:json][timeout:30];
+        (
+          way["leisure"="park"](around:${radius},${lat},${lng});
+          way["leisure"="garden"](around:${radius},${lat},${lng});
+          way["leisure"="nature_reserve"](around:${radius},${lat},${lng});
+          way["landuse"="grass"](around:${radius},${lat},${lng});
+          way["landuse"="meadow"](around:${radius},${lat},${lng});
+          way["landuse"="village_green"](around:${radius},${lat},${lng});
+          way["landuse"="greenfield"](around:${radius},${lat},${lng});
+          way["landuse"="brownfield"](around:${radius},${lat},${lng});
+          way["landuse"="recreation_ground"](around:${radius},${lat},${lng});
+          way["natural"="scrub"](around:${radius},${lat},${lng});
+          way["natural"="grassland"](around:${radius},${lat},${lng});
+          relation["leisure"="park"](around:${radius},${lat},${lng});
+          relation["leisure"="garden"](around:${radius},${lat},${lng});
+        );
+        out geom;
+      `;
+      const res = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: `data=${encodeURIComponent(query)}`,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      });
+      if (!res.ok) throw new Error(`Overpass API error: ${res.status}`);
+      const data = await res.json();
+
+      const features = [];
+      const seen = new Set();
+      for (const el of data.elements) {
+        if (el.type === 'way' && el.geometry && el.geometry.length > 2) {
+          const coords = el.geometry.map(n => [n.lon, n.lat]);
+          // Close polygon if needed
+          const f = coords[0], l = coords[coords.length - 1];
+          if (f[0] !== l[0] || f[1] !== l[1]) coords.push([f[0], f[1]]);
+          const tags = el.tags || {};
+          const cat = categorizeZone(tags);
+          features.push({
+            type: 'Feature',
+            properties: {
+              id: el.id, name: tags.name || cat.label, type: cat.key,
+              permit_required: cat.permit,
+              soil_type: 'Analyze with AI 📸',
+              sun_exposure: 'Analyze with AI 📸',
+              best_season: 'Spring / Fall'
+            },
+            geometry: { type: 'Polygon', coordinates: [coords] }
+          });
+          seen.add(el.id);
+        } else if (el.type === 'relation' && el.members) {
+          for (const member of el.members) {
+            if (member.type === 'way' && member.geometry && member.geometry.length > 2 && member.role === 'outer') {
+              if (seen.has(member.ref)) continue;
+              seen.add(member.ref);
+              const coords = member.geometry.map(n => [n.lon, n.lat]);
+              const f = coords[0], l = coords[coords.length - 1];
+              if (f[0] !== l[0] || f[1] !== l[1]) coords.push([f[0], f[1]]);
+              const tags = el.tags || {};
+              const cat = categorizeZone(tags);
+              features.push({
+                type: 'Feature',
+                properties: {
+                  id: el.id, name: tags.name || cat.label, type: cat.key,
+                  permit_required: cat.permit,
+                  soil_type: 'Analyze with AI 📸',
+                  sun_exposure: 'Analyze with AI 📸',
+                  best_season: 'Spring / Fall'
+                },
+                geometry: { type: 'Polygon', coordinates: [coords] }
+              });
+            }
+          }
+        }
+      }
+      return { type: 'FeatureCollection', features };
+    }
+
+    // Fallback mock zones if Overpass fails
     function generateMockZones(lng, lat) {
       const defs = [
         { offset: [0.0010,  0.0010], name: 'City Park Strip',      type: 'public_park', permit: false, soil: 'Loamy',  sun: 'Full Sun'      },
@@ -1234,23 +1499,46 @@
         { offset: [-0.0010,-0.0016], name: 'Vacant Lot',           type: 'vacant',      permit: true,  soil: 'Silty',  sun: 'Full Shade'    },
         { offset: [0.0028,  0.0005], name: 'Median Planting Zone', type: 'median',      permit: true,  soil: 'Rocky',  sun: 'Full Sun'      }
       ];
-      const features = defs.map((d, i) => {
-        const clng = lng + d.offset[0];
-        const clat = lat + d.offset[1];
-        const s = 0.00042;
-        return {
-          type: 'Feature',
-          properties: { id: i, name: d.name, type: d.type, permit_required: d.permit, soil_type: d.soil, sun_exposure: d.sun, best_season: 'Spring / Fall' },
-          geometry: { type: 'Polygon', coordinates: [[[clng-s,clat-s],[clng+s,clat-s],[clng+s,clat+s],[clng-s,clat+s],[clng-s,clat-s]]] }
-        };
-      });
-      return { type: 'FeatureCollection', features };
+      return {
+        type: 'FeatureCollection',
+        features: defs.map((d, i) => {
+          const clng = lng + d.offset[0], clat = lat + d.offset[1], s = 0.00042;
+          return {
+            type: 'Feature',
+            properties: { id: i, name: d.name, type: d.type, permit_required: d.permit, soil_type: d.soil, sun_exposure: d.sun, best_season: 'Spring / Fall' },
+            geometry: { type: 'Polygon', coordinates: [[[clng-s,clat-s],[clng+s,clat-s],[clng+s,clat+s],[clng-s,clat+s],[clng-s,clat-s]]] }
+          };
+        })
+      };
     }
 
     let pulseTimer = null;
-    function loadPlantingZones(lng, lat) {
-      const geojson = generateMockZones(lng, lat);
-      if (map.getSource('planting-zones')) { map.getSource('planting-zones').setData(geojson); return; }
+    let zoneClickBound = false;
+
+    async function loadPlantingZones(lng, lat) {
+      showToast('🔍 SCANNING FOR PLANTING ZONES...');
+      const scanBtn = document.getElementById('scan-btn');
+      scanBtn.classList.add('scanning');
+      scanBtn.textContent = '⏳ SCANNING...';
+
+      let geojson;
+      try {
+        geojson = await fetchRealPlantingZones(lng, lat);
+        if (geojson.features.length === 0) throw new Error('No zones found');
+        showToast(`✅ FOUND ${geojson.features.length} PLANTABLE ZONE${geojson.features.length !== 1 ? 'S' : ''}`);
+      } catch (err) {
+        console.warn('Overpass API failed, using mock zones:', err);
+        geojson = generateMockZones(lng, lat);
+        showToast('⚠ USING SAMPLE ZONES — API UNAVAILABLE');
+      }
+
+      scanBtn.classList.remove('scanning');
+      scanBtn.textContent = '⚡ SCAN FOR PLANTING SPOTS';
+
+      if (map.getSource('planting-zones')) {
+        map.getSource('planting-zones').setData(geojson);
+        return;
+      }
 
       map.addSource('planting-zones', { type: 'geojson', data: geojson });
       map.addLayer({
@@ -1271,9 +1559,286 @@
         if (map.getLayer('zones-fill')) map.setPaintProperty('zones-fill', 'fill-opacity', opacity);
       }, 50);
 
-      map.on('click', 'zones-fill', (e) => { if (e.features.length) openZoneSidebar(e.features[0].properties, e.lngLat); });
-      map.on('mouseenter', 'zones-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'zones-fill', () => { map.getCanvas().style.cursor = ''; });
+      if (!zoneClickBound) {
+        zoneClickBound = true;
+        map.on('click', 'zones-fill', (e) => { if (e.features.length) openZoneSidebar(e.features[0].properties, e.lngLat); });
+        map.on('mouseenter', 'zones-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', 'zones-fill', () => { map.getCanvas().style.cursor = ''; });
+      }
+    }
+
+    // Manual rescan from current map center
+    async function scanPlantingZones() {
+      if (!AppState.userLocation) return;
+      const center = map.getCenter();
+
+      // Run Overpass zone fetch + AI satellite scan in parallel
+      const overpassPromise = loadPlantingZones(center.lng, center.lat);
+      const aiScanPromise = aiScanSatelliteView();
+
+      await Promise.allSettled([overpassPromise, aiScanPromise]);
+    }
+
+    /* ─── AI SATELLITE GREEN DETECTION ─── */
+    let aiSpotMarkers = [];
+
+    function captureMapCanvas() {
+      const canvas = map.getCanvas();
+      // Create a smaller version for faster AI processing
+      const maxDim = 512;
+      const scale = Math.min(maxDim / canvas.width, maxDim / canvas.height, 1);
+      const w = Math.round(canvas.width * scale);
+      const h = Math.round(canvas.height * scale);
+      const offscreen = document.createElement('canvas');
+      offscreen.width = w;
+      offscreen.height = h;
+      const ctx = offscreen.getContext('2d');
+      ctx.drawImage(canvas, 0, 0, w, h);
+      return {
+        base64: offscreen.toDataURL('image/jpeg', 0.85).split(',')[1],
+        width: canvas.width,
+        height: canvas.height
+      };
+    }
+
+    async function aiScanSatelliteView() {
+      const overlay = document.getElementById('ai-scan-overlay');
+      overlay.classList.add('active');
+
+      try {
+        const { base64, width, height } = captureMapCanvas();
+        const bounds = map.getBounds();
+        const center = map.getCenter();
+
+        const prompt = `You are an urban forestry AI analyzing a satellite/aerial view of a city.
+Look at this satellite image and identify ALL potential planting sites — anywhere trees, shrubs, or plants could be added.
+Look for: empty grass patches between buildings, bare dirt areas, wide sidewalk strips, parking lot islands, median strips, rooftop gardens, abandoned lots, unmaintained patches of land, gaps in tree canopy.
+For EACH site you find, estimate its position as a percentage from the top-left corner (x% from left, y% from top).
+Also assess:
+- type: one of "grass_patch", "bare_soil", "sidewalk_strip", "parking_island", "median", "rooftop", "vacant_lot", "tree_gap"
+- size: "small", "medium", "large"
+- plantability: 1-10 score
+- suggestion: one short sentence about what could be planted
+- needs_donation: true if it looks like it needs funding/community effort, false if a person could just plant there
+
+Return ONLY valid JSON array — no markdown, no explanation:
+[{"x":45,"y":32,"type":"grass_patch","size":"medium","plantability":8,"suggestion":"Perfect spot for a shade tree like Red Maple","needs_donation":false}, ...]
+Find at least 3-8 sites. Be thorough.`;
+
+        const response = await fetch(`${CONFIG.OLLAMA_URL}/api/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: CONFIG.OLLAMA_MODEL,
+            prompt,
+            images: [base64],
+            stream: false,
+            options: { temperature: 0.3, num_predict: 2048 }
+          })
+        });
+
+        if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
+        const data = await response.json();
+        const rawText = (data.response || '').replace(/```json|```/g, '').trim();
+
+        let spots;
+        try { spots = JSON.parse(rawText); }
+        catch { const m = rawText.match(/\[[\s\S]*\]/); if (!m) throw new Error('No JSON array'); spots = JSON.parse(m[0]); }
+
+        if (!Array.isArray(spots) || spots.length === 0) throw new Error('No spots detected');
+
+        // Clear previous AI markers
+        clearAISpots();
+
+        // Convert screen percentages to map coordinates
+        for (const spot of spots) {
+          const lng = bounds.getWest() + (spot.x / 100) * (bounds.getEast() - bounds.getWest());
+          const lat = bounds.getNorth() - (spot.y / 100) * (bounds.getNorth() - bounds.getSouth());
+
+          const el = document.createElement('div');
+          el.className = 'ai-spot-marker';
+          el.title = spot.suggestion;
+
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([lng, lat])
+            .addTo(map);
+
+          marker._spotData = {
+            name: formatSpotType(spot.type),
+            type: mapSpotToZoneType(spot.type),
+            plantability: spot.plantability || 5,
+            size: spot.size || 'medium',
+            suggestion: spot.suggestion || '',
+            needs_donation: spot.needs_donation || false,
+            permit_required: spot.type === 'median' || spot.type === 'rooftop' || spot.type === 'parking_island',
+            soil_type: 'Analyze with AI 📸',
+            sun_exposure: 'Analyze with AI 📸',
+            best_season: 'Spring / Fall',
+            ai_detected: true
+          };
+
+          el.addEventListener('click', () => {
+            openZoneSidebar(marker._spotData, { lng, lat });
+          });
+
+          aiSpotMarkers.push(marker);
+        }
+
+        showToast(`🤖 AI FOUND ${spots.length} PLANTING OPPORTUNIT${spots.length !== 1 ? 'IES' : 'Y'}`);
+      } catch (err) {
+        console.warn('AI satellite scan failed:', err);
+        if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+          showToast('🤖 AI SCAN NEEDS OLLAMA — RUN: ollama serve');
+        } else {
+          showToast('🤖 AI SCAN COMPLETE — NO NEW SPOTS FOUND');
+        }
+      } finally {
+        overlay.classList.remove('active');
+      }
+    }
+
+    function formatSpotType(type) {
+      const names = {
+        grass_patch: 'Grass Patch', bare_soil: 'Bare Soil Area', sidewalk_strip: 'Sidewalk Planting Strip',
+        parking_island: 'Parking Lot Island', median: 'Road Median', rooftop: 'Rooftop Space',
+        vacant_lot: 'Vacant Lot', tree_gap: 'Tree Canopy Gap'
+      };
+      return names[type] || 'Planting Opportunity';
+    }
+
+    function mapSpotToZoneType(type) {
+      const mapping = {
+        grass_patch: 'public_park', bare_soil: 'vacant', sidewalk_strip: 'sidewalk',
+        parking_island: 'median', median: 'median', rooftop: 'community',
+        vacant_lot: 'vacant', tree_gap: 'public_park'
+      };
+      return mapping[type] || 'public_park';
+    }
+
+    function clearAISpots() {
+      aiSpotMarkers.forEach(m => m.remove());
+      aiSpotMarkers = [];
+    }
+
+    /* ─── DROP-A-PIN (click anywhere) ─── */
+    let dropPinMarker = null;
+    let dropPinSetup = false;
+
+    function setupDropPin() {
+      if (dropPinSetup) return;
+      dropPinSetup = true;
+
+      map.on('click', (e) => {
+        // Don't trigger if clicking on a zone or during other phases
+        if (AppState.phase !== 'city') return;
+
+        // Check if we clicked on a zone — if so, zone handler takes priority
+        const zoneFeatures = map.queryRenderedFeatures(e.point, { layers: ['zones-fill'] });
+        if (zoneFeatures.length > 0) return;
+
+        // Drop a pin
+        if (dropPinMarker) dropPinMarker.remove();
+
+        const el = document.createElement('div');
+        el.className = 'drop-pin-marker';
+
+        dropPinMarker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat(e.lngLat)
+          .addTo(map);
+
+        // Open sidebar for this custom location
+        openZoneSidebar({
+          name: 'Custom Spot',
+          type: 'vacant',
+          permit_required: true,
+          soil_type: 'Analyze with AI 📸',
+          sun_exposure: 'Analyze with AI 📸',
+          best_season: 'Spring / Fall',
+          ai_detected: false,
+          plantability: null,
+          suggestion: 'Upload a photo of this spot for AI analysis',
+          needs_donation: false
+        }, e.lngLat);
+      });
+    }
+
+    /* ─── CITY PROGRAMS LOOKUP ─── */
+    const CITY_PROGRAMS = {
+      'tempe': {
+        city: 'Tempe, AZ',
+        programs: [
+          { name: 'Tempe Urban Forestry Program', action: 'Apply for a free street tree', url: 'https://www.tempe.gov/forestry' },
+          { name: 'Trees for Tempe', action: 'Volunteer for community planting events', url: 'https://www.tempe.gov/trees' },
+          { name: 'AZ Dept of Forestry & Fire', action: 'State grant programs for urban canopy', url: 'https://dffm.az.gov' }
+        ]
+      },
+      'phoenix': {
+        city: 'Phoenix, AZ',
+        programs: [
+          { name: 'Phoenix Tree & Shade Program', action: 'Get free shade trees for your property', url: 'https://www.phoenix.gov/parks/parks/urban-forest' },
+          { name: 'Trees Matter', action: 'Community planting & education', url: 'https://treesmatter.org' }
+        ]
+      },
+      'new york': {
+        city: 'New York, NY',
+        programs: [
+          { name: 'NYC Parks MillionTreesNYC', action: 'Request a street tree planting', url: 'https://www.nycgovparks.org/trees' },
+          { name: 'Trees New York', action: 'Volunteer as a citizen pruner', url: 'https://treesny.org' }
+        ]
+      },
+      'los angeles': {
+        city: 'Los Angeles, CA',
+        programs: [
+          { name: 'City Plants', action: 'Get free yard & street trees', url: 'https://cityplants.org' },
+          { name: 'LA Urban Forest', action: 'Community planting events', url: 'https://www.lamayor.org/urbanforest' }
+        ]
+      },
+      'austin': {
+        city: 'Austin, TX',
+        programs: [
+          { name: 'TreeFolks', action: 'Free tree adoption program', url: 'https://treefolks.org' },
+          { name: 'Austin Community Trees', action: 'Neighborhood planting grants', url: 'https://www.austintexas.gov/trees' }
+        ]
+      },
+      'chicago': {
+        city: 'Chicago, IL',
+        programs: [
+          { name: 'Chicago CDOT Trees', action: 'Request street tree planting', url: 'https://www.chicago.gov/trees' },
+          { name: 'Openlands TreeKeepers', action: 'Volunteer tree care training', url: 'https://openlands.org' }
+        ]
+      },
+      'london': {
+        city: 'London, UK',
+        programs: [
+          { name: 'Trees for Cities', action: 'Urban community tree planting', url: 'https://treesforcities.org' },
+          { name: 'Woodland Trust', action: 'Free trees for communities', url: 'https://www.woodlandtrust.org.uk' }
+        ]
+      },
+      'default': {
+        city: 'Your City',
+        programs: [
+          { name: 'Arbor Day Foundation', action: 'Join & get 10 free trees', url: 'https://arborday.org' },
+          { name: 'One Tree Planted', action: 'Donate $1 = 1 tree planted', url: 'https://onetreeplanted.org' },
+          { name: 'Local City Forestry Dept.', action: 'Search "[your city] urban forestry" for local programs', url: '' }
+        ]
+      }
+    };
+
+    function getCityPrograms() {
+      if (!AppState.userLocation) return CITY_PROGRAMS['default'];
+      // Try to match from the city input
+      const cityInput = document.getElementById('city-input').value.toLowerCase().trim();
+      for (const key of Object.keys(CITY_PROGRAMS)) {
+        if (key !== 'default' && cityInput.includes(key)) return CITY_PROGRAMS[key];
+      }
+      // Try reverse geocode match from cache
+      if (AppState.detectedCity) {
+        const city = AppState.detectedCity.toLowerCase();
+        for (const key of Object.keys(CITY_PROGRAMS)) {
+          if (key !== 'default' && city.includes(key)) return CITY_PROGRAMS[key];
+        }
+      }
+      return CITY_PROGRAMS['default'];
     }
 
     /* ─── ZONE SIDEBAR ─── */
@@ -1292,6 +1857,60 @@
       document.getElementById('upload-zone').innerHTML = `<div class="upload-inner"><span class="upload-icon">🌱</span><p>Tap to upload a photo or take one now</p></div>`;
       document.getElementById('analyze-btn').classList.add('hidden');
       document.getElementById('ai-loading').classList.add('hidden');
+
+      // Build action card
+      const actionArea = document.getElementById('zone-action-card');
+      let html = '';
+
+      // Plantability score (if AI-detected or has score)
+      if (props.plantability != null) {
+        const score = props.plantability;
+        const tier = score >= 7 ? 'high' : score >= 4 ? 'medium' : 'low';
+        const tierLabel = score >= 7 ? 'Great Spot!' : score >= 4 ? 'Moderate Potential' : 'Challenging Site';
+        html += `
+          <div class="action-score">
+            <div class="score-circle ${tier}">${score}</div>
+            <div class="score-label"><strong>${tierLabel}</strong>PLANTABILITY SCORE</div>
+          </div>`;
+      }
+
+      // Suggestion
+      if (props.suggestion && props.suggestion !== 'Upload a photo of this spot for AI analysis') {
+        html += `<p style="font-size:0.68rem;color:var(--text-mid);line-height:1.7;margin-bottom:10px;">💡 ${props.suggestion}</p>`;
+      }
+
+      // Donation/community tag
+      if (props.needs_donation) {
+        html += `<p style="font-size:0.62rem;color:#b8860b;margin-bottom:10px;padding:8px 10px;background:rgba(184,134,11,0.1);border-left:2px solid #b8860b;">🤝 This site could benefit from community funding or volunteer effort.</p>`;
+      }
+
+      // Action steps
+      const actions = [];
+      if (props.permit_required) {
+        actions.push({ tag: 'PERMIT', text: 'Contact city forestry department for planting permit' });
+      } else {
+        actions.push({ tag: 'FREE', text: 'No permit needed — you can plant here!' });
+      }
+      if (props.ai_detected) {
+        actions.push({ tag: 'AI', text: 'AI-detected opportunity — verify in person before planting' });
+      }
+      actions.push({ tag: 'NEXT', text: 'Upload a soil photo below for species recommendations' });
+
+      html += `<ul class="action-list">${actions.map(a => `<li><span class="action-tag">${a.tag}</span>${a.text}</li>`).join('')}</ul>`;
+
+      // City programs
+      const programs = getCityPrograms();
+      html += `<div style="margin-top:14px;"><div style="font-size:0.5rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">LOCAL PROGRAMS — ${programs.city.toUpperCase()}</div>`;
+      for (const p of programs.programs) {
+        if (p.url) {
+          html += `<a href="${p.url}" target="_blank" rel="noopener" style="display:block;font-size:0.62rem;color:var(--green);margin-bottom:6px;text-decoration:none;padding:6px 8px;background:var(--green-dim);border-left:2px solid var(--green);line-height:1.5;"><strong>${p.name}</strong><br><span style="color:var(--text-mid);">${p.action}</span></a>`;
+        } else {
+          html += `<div style="font-size:0.62rem;color:var(--text-mid);margin-bottom:6px;padding:6px 8px;background:var(--bg-card2);border-left:2px solid var(--border);line-height:1.5;">${p.action}</div>`;
+        }
+      }
+      html += `</div>`;
+
+      actionArea.innerHTML = html;
       document.getElementById('zone-sidebar').classList.add('open');
     }
 
@@ -1333,10 +1952,13 @@ Based on what you observe:
 1. Identify the likely soil type (clay, loam, sand, silt, rocky, etc.)
 2. Estimate moisture level (dry, moderate, moist)
 3. Assess sunlight conditions visible in the image
-4. Recommend exactly 3 tree species ideal for urban planting in temperate US climates that would thrive here
-5. For each species: common name, scientific name, expected mature height, growth rate, one actionable care tip
+4. Give a plantability score from 1-10 (10 = ideal for planting)
+5. Estimate whether this spot needs community funding/donations (true/false)
+6. Estimate planting cost range for one tree (format: "$50-150")
+7. Recommend exactly 3 tree species ideal for urban planting in temperate US climates that would thrive here
+8. For each species: common name, scientific name, expected mature height, growth rate, one actionable care tip
 Return ONLY valid JSON in this exact schema — no markdown fences, no extra text:
-{"soil_type":"...","moisture":"...","sunlight":"...","location_notes":"One sentence.","recommendations":[{"common_name":"...","scientific_name":"...","height":"...","growth_rate":"...","care_tip":"...","model":"oak"}]}
+{"soil_type":"...","moisture":"...","sunlight":"...","plantability":8,"needs_donation":false,"est_cost":"$50-150","location_notes":"One sentence.","recommendations":[{"common_name":"...","scientific_name":"...","height":"...","growth_rate":"...","care_tip":"...","model":"oak"}]}
 For the "model" field use one of: oak, pine, maple, sapling`;
       try {
         const response = await fetch(`${CONFIG.OLLAMA_URL}/api/generate`, {
@@ -1369,16 +1991,34 @@ For the "model" field use one of: oak, pine, maple, sapling`;
     /* ─── RENDER RESULTS ─── */
     function renderAIResults(data) {
       const panel = document.getElementById('ai-result-panel');
-      const safe  = (s) => s.replace(/['"<>]/g, '');
+      const safe  = (s) => s ? s.replace(/['"<>]/g, '') : '';
+
+      // Plantability badge
+      const score = data.plantability || 5;
+      const tier = score >= 7 ? 'high' : score >= 4 ? 'medium' : 'low';
+      const tierLabel = score >= 7 ? 'Great Spot' : score >= 4 ? 'Moderate' : 'Challenging';
+
+      let extraChips = '';
+      if (data.est_cost) extraChips += `<span class="stat-chip">EST. ${safe(data.est_cost)}</span>`;
+      if (data.needs_donation) extraChips += `<span class="stat-chip" style="border-color:#b8860b;color:#b8860b;">🤝 NEEDS COMMUNITY SUPPORT</span>`;
+
       panel.innerHTML = `
         <div class="result-header">
           <h2>AI Soil Analysis</h2>
-          <div class="soil-stats">
-            <span class="stat-chip">${data.soil_type}</span>
-            <span class="stat-chip">${data.moisture}</span>
-            <span class="stat-chip">${data.sunlight}</span>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+            <div class="score-circle ${tier}" style="width:42px;height:42px;font-size:1.3rem;">${score}</div>
+            <div style="font-size:0.54rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted);">
+              <strong style="display:block;font-size:0.7rem;color:var(--text);letter-spacing:0.05em;">${tierLabel}</strong>
+              PLANTABILITY SCORE
+            </div>
           </div>
-          <p class="location-note">${data.location_notes}</p>
+          <div class="soil-stats">
+            <span class="stat-chip">${safe(data.soil_type)}</span>
+            <span class="stat-chip">${safe(data.moisture)}</span>
+            <span class="stat-chip">${safe(data.sunlight)}</span>
+            ${extraChips}
+          </div>
+          <p class="location-note">${safe(data.location_notes)}</p>
         </div>
         <h3>Recommended Trees — Click to Place on Map</h3>
         <div class="tree-cards">
@@ -1386,14 +2026,23 @@ For the "model" field use one of: oak, pine, maple, sapling`;
             <div class="tree-card" onclick="plantTree(${i})" role="button" tabindex="0" aria-label="Plant ${safe(tree.common_name)}">
               <div class="tree-card-top">
                 <div class="tree-number">${i+1}</div>
-                <div class="tree-info"><h4>${tree.common_name}</h4><em>${tree.scientific_name}</em></div>
+                <div class="tree-info"><h4>${safe(tree.common_name)}</h4><em>${safe(tree.scientific_name)}</em></div>
               </div>
-              <div class="tree-meta"><span>${tree.height}</span><span>${tree.growth_rate} growth</span></div>
-              <p class="care-tip">${tree.care_tip}</p>
+              <div class="tree-meta"><span>${safe(tree.height)}</span><span>${safe(tree.growth_rate)} growth</span></div>
+              <p class="care-tip">${safe(tree.care_tip)}</p>
               <button class="plant-btn" onclick="event.stopPropagation();plantTree(${i})">↳ PLACE ON MAP</button>
             </div>`).join('')}
         </div>`;
       panel.classList.add('open');
+
+      // Also update sidebar action card with analysis results
+      if (AppState.selectedZone) {
+        AppState.selectedZone.plantability = score;
+        AppState.selectedZone.needs_donation = data.needs_donation || false;
+        AppState.selectedZone.suggestion = data.location_notes || '';
+        // Refresh action card
+        openZoneSidebar(AppState.selectedZone, AppState.selectedZoneCoords);
+      }
     }
 
     function plantTree(index) {
@@ -1589,6 +2238,9 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       document.getElementById('trees-planted-count').textContent = '0 TREES PLACED';
       ['zones-fill','zones-outline','3d-buildings'].forEach(id => { try { if(map.getLayer(id)) map.removeLayer(id); } catch{} });
       try { if(map.getSource('planting-zones')) map.removeSource('planting-zones'); } catch{}
+      zoneClickBound = false;
+      clearAISpots();
+      if (dropPinMarker) { dropPinMarker.remove(); dropPinMarker = null; }
       if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null; }
       document.getElementById('topbar').classList.remove('visible');
       document.getElementById('hint-text').classList.remove('visible');
@@ -1597,6 +2249,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       document.getElementById('ai-result-panel').classList.remove('open');
       AppState.phase = 'globe'; AppState.userLocation = null; AppState.selectedZone = null;
       AppState.selectedZoneCoords = null; AppState.uploadedImageB64 = null; AppState.aiResults = null;
+      AppState.detectedCity = null;
       introInteracted = false;
       map.flyTo({
         center: [0, 20],
