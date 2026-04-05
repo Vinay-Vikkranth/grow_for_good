@@ -400,6 +400,28 @@
     }
     #reset-btn:hover { border-color: var(--green); color: var(--green); }
 
+    .nav-right { display: flex; align-items: center; gap: 10px; }
+
+    #style-toggle-btn {
+      padding: 8px 20px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 0.58rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+      white-space: nowrap;
+    }
+    #style-toggle-btn:hover { border-color: var(--green); color: var(--green); }
+    #style-toggle-btn.active {
+      background: var(--green);
+      color: var(--bg);
+      border-color: var(--green);
+    }
+
     /* ═══════════════════════════════════════════
        ZONE HINT BANNER
     ═══════════════════════════════════════════ */
@@ -792,7 +814,10 @@
   <nav id="topbar">
     <div class="nav-logo">PLANTMAP</div>
     <div class="nav-stats" id="trees-planted-count">0 TREES PLACED</div>
-    <button id="reset-btn" onclick="resetToGlobe()">↩ NEW LOCATION</button>
+    <div class="nav-right">
+      <button id="style-toggle-btn" onclick="toggleMapStyle()">🛰 SATELLITE</button>
+      <button id="reset-btn" onclick="resetToGlobe()">↩ NEW LOCATION</button>
+    </div>
   </nav>
 
   <!-- ZONE HINT -->
@@ -1311,7 +1336,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
           this._map.triggerRepaint();
         }
       });
-      AppState.placedTrees.push({ layerId, lng, lat, name: displayName });
+      AppState.placedTrees.push({ layerId, lng, lat, name: displayName, modelName });
       const count = AppState.placedTrees.length;
       document.getElementById('trees-planted-count').textContent = `${count} TREE${count!==1?'S':''} PLACED`;
       showToast(`${displayName.toUpperCase()} PLANTED — ${count} TREE${count!==1?'S':''} TODAY`);
@@ -1327,8 +1352,85 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
     }
 
+    /* ─── MAP STYLE TOGGLE ─── */
+    const MAP_STYLES = {
+      light:     { url: 'mapbox://styles/mapbox/light-v11',              label: '🛰 SATELLITE', buildingColor: '#d8d2c8' },
+      satellite: { url: 'mapbox://styles/mapbox/satellite-streets-v12',  label: '🗺 LIGHT MAP',  buildingColor: '#c0bfbd' }
+    };
+    let currentStyleKey = 'light';
+
+    function toggleMapStyle() {
+      currentStyleKey = currentStyleKey === 'light' ? 'satellite' : 'light';
+      const next = MAP_STYLES[currentStyleKey];
+      const btn = document.getElementById('style-toggle-btn');
+      btn.textContent = next.label;
+      btn.classList.toggle('active', currentStyleKey === 'satellite');
+
+      // Save current camera state
+      const center  = map.getCenter();
+      const zoom    = map.getZoom();
+      const pitch   = map.getPitch();
+      const bearing = map.getBearing();
+
+      map.setStyle(next.url);
+
+      map.once('style.load', () => {
+        // Restore camera
+        map.jumpTo({ center, zoom, pitch, bearing });
+
+        // Re-apply fog + terrain
+        if (currentStyleKey === 'light') {
+          map.setFog({
+            color:            'rgb(228, 218, 200)',
+            'high-color':     'rgb(180, 200, 220)',
+            'horizon-blend':  0.08,
+            'space-color':    'rgb(190, 210, 230)',
+            'star-intensity': 0.0
+          });
+        } else {
+          map.setFog({
+            color:            'rgb(186, 210, 235)',
+            'high-color':     'rgb(36, 92, 223)',
+            'horizon-blend':  0.02,
+            'space-color':    'rgb(11, 11, 25)',
+            'star-intensity': 0.6
+          });
+        }
+
+        map.addSource('mapbox-dem', {
+          type:     'raster-dem',
+          url:      'mapbox://mapbox.mapbox-terrain-dem-v1',
+          tileSize: 512,
+          maxzoom:  14
+        });
+        map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+
+        // Re-add layers if we're in city phase
+        if (AppState.phase !== 'globe' && AppState.userLocation) {
+          enable3DBuildings();
+          loadPlantingZones(AppState.userLocation.lng, AppState.userLocation.lat);
+
+          // Re-add placed trees
+          const treesToRestore = [...AppState.placedTrees];
+          AppState.placedTrees = [];
+          treesToRestore.forEach(t => {
+            place3DTree(t.lng, t.lat, t.modelName || 'oak', t.name);
+          });
+          const count = AppState.placedTrees.length;
+          document.getElementById('trees-planted-count').textContent = `${count} TREE${count!==1?'S':''} PLACED`;
+        }
+      });
+    }
+
     /* ─── RESET ─── */
     function resetToGlobe() {
+      // Reset style to light if needed
+      if (currentStyleKey !== 'light') {
+        currentStyleKey = 'light';
+        document.getElementById('style-toggle-btn').textContent = MAP_STYLES.light.label;
+        document.getElementById('style-toggle-btn').classList.remove('active');
+        map.setStyle(MAP_STYLES.light.url);
+      }
       AppState.placedTrees.forEach(({layerId}) => { try { if(map.getLayer(layerId)) map.removeLayer(layerId); } catch{} });
       AppState.placedTrees = [];
       document.getElementById('trees-planted-count').textContent = '0 TREES PLACED';
