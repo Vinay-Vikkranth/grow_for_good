@@ -4,10 +4,9 @@ Thumbs.db
 
 # Editor
 .vscode/
-.idea/
 
-# Logs
-*.log
+# Claude
+.claude/
 
-# Local config with real tokens — never commit this
-config.js
+# Local config with real tokens
+plantmap/config.js
