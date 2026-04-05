@@ -831,12 +831,84 @@
     #hint-text.visible { opacity: 1; }
 
     .hidden { display: none !important; }
+
+    /* ═══════════════════════════════════════════
+       NATURE OVERLAY — birds, clouds, ambience
+    ═══════════════════════════════════════════ */
+    #nature-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      overflow: hidden;
+      opacity: 0;
+      transition: opacity 1.8s ease;
+    }
+    #nature-overlay.active { opacity: 1; }
+
+    /* ── Flying birds ── */
+    .bird {
+      position: absolute;
+      pointer-events: none;
+      will-change: transform;
+    }
+    .bird svg { display: block; }
+    .bird-wing { animation: flap 0.4s ease-in-out infinite alternate; transform-origin: center; }
+    .bird-wing.left  { animation-name: flapL; }
+    .bird-wing.right { animation-name: flapR; }
+    @keyframes flapL {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(-28deg); }
+    }
+    @keyframes flapR {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(28deg); }
+    }
+
+    /* ── Cloud wisps ── */
+    .cloud-wisp {
+      position: absolute;
+      pointer-events: none;
+      border-radius: 50%;
+      filter: blur(40px);
+      will-change: transform;
+    }
+
+    /* ── Sound toggle ── */
+    #sound-toggle {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 200;
+      width: 44px;
+      height: 44px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+      transition: background 0.2s, border-color 0.2s, opacity 0.5s;
+      opacity: 0;
+      pointer-events: none;
+      cursor: pointer;
+    }
+    #sound-toggle.visible { opacity: 1; pointer-events: auto; }
+    #sound-toggle:hover { border-color: var(--green); }
   </style>
 </head>
 <body>
 
   <!-- MAP -->
   <div id="map"></div>
+
+  <!-- NATURE OVERLAY (birds + clouds) -->
+  <div id="nature-overlay"></div>
+
+  <!-- SOUND TOGGLE -->
+  <button id="sound-toggle" onclick="toggleAmbientSound()" title="Toggle ambient sounds">🔇</button>
 
   <!-- INTRO SCREEN -->
   <div id="intro-screen">
@@ -1135,6 +1207,7 @@
           const hint = document.getElementById('zone-hint');
           hint.classList.add('visible');
           setTimeout(() => hint.classList.remove('visible'), 4500);
+          startNatureEffects();
         }, 3600);
       }, 2200);
     }
@@ -1516,6 +1589,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       if (currentStyleKey !== 'light') {
         switchTheme('light');
       }
+      stopNatureEffects();
       AppState.placedTrees.forEach(({layerId}) => { try { if(map.getLayer(layerId)) map.removeLayer(layerId); } catch{} });
       AppState.placedTrees = [];
       document.getElementById('trees-planted-count').textContent = '0 TREES PLACED';
@@ -1537,6 +1611,370 @@ For the "model" field use one of: oak, pine, maple, sapling`;
         document.getElementById('city-input').value = '';
         startGlobeRotation();
       }, 2600);
+    }
+
+    /* ═══════════════════════════════════════════
+       NATURE IMMERSION ENGINE
+       — Flying birds, drifting clouds, ambient audio
+    ═══════════════════════════════════════════ */
+
+    const NatureEngine = {
+      active: false,
+      birds: [],
+      clouds: [],
+      birdTimer: null,
+      cloudTimer: null,
+      audioCtx: null,
+      audioNodes: [],
+      audioMuted: false,
+      mapPanOffset: { x: 0, y: 0 },
+      lastCenter: null,
+    };
+
+    /* ─── BIRD SVG BUILDER ─── */
+    function createBirdSVG(size, color) {
+      const s = size;
+      // Bird made of two wing paths
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', s * 2);
+      svg.setAttribute('height', s);
+      svg.setAttribute('viewBox', '0 0 40 20');
+      svg.style.overflow = 'visible';
+
+      // Left wing
+      const lWing = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      lWing.setAttribute('d', 'M20 12 Q14 4, 2 2 Q10 9, 20 12');
+      lWing.setAttribute('fill', color);
+      lWing.classList.add('bird-wing', 'left');
+      const flapSpeed = 0.25 + Math.random() * 0.35;
+      lWing.style.animationDuration = flapSpeed + 's';
+
+      // Right wing
+      const rWing = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      rWing.setAttribute('d', 'M20 12 Q26 4, 38 2 Q30 9, 20 12');
+      rWing.setAttribute('fill', color);
+      rWing.classList.add('bird-wing', 'right');
+      rWing.style.animationDuration = flapSpeed + 's';
+
+      // Body
+      const body = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+      body.setAttribute('cx', '20');
+      body.setAttribute('cy', '13');
+      body.setAttribute('rx', '3');
+      body.setAttribute('ry', '2');
+      body.setAttribute('fill', color);
+
+      svg.appendChild(lWing);
+      svg.appendChild(rWing);
+      svg.appendChild(body);
+      return svg;
+    }
+
+    /* ─── SPAWN A BIRD ─── */
+    function spawnBird() {
+      const overlay = document.getElementById('nature-overlay');
+      if (!overlay.classList.contains('active')) return;
+
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const size = 14 + Math.random() * 22;
+      const speed = 12 + Math.random() * 18; // seconds to cross screen
+      const fromRight = Math.random() > 0.5;
+      const startX = fromRight ? vw + 60 : -60;
+      const endX   = fromRight ? -80 : vw + 80;
+      const startY = 40 + Math.random() * (vh * 0.45);
+      const waveAmp = 15 + Math.random() * 35;
+      const waveFreq = 1 + Math.random() * 2;
+      const depth = 0.3 + Math.random() * 0.7; // parallax depth factor
+
+      const colors = ['#1a1a1a', '#2d2d2d', '#3b3020', '#252520', '#181818'];
+      const color = colors[Math.floor(Math.random() * colors.length)];
+
+      const el = document.createElement('div');
+      el.className = 'bird';
+      el.style.top = startY + 'px';
+      el.style.left = startX + 'px';
+      el.style.opacity = (0.35 + depth * 0.55).toFixed(2);
+      el.style.transform = `scale(${(0.5 + depth * 0.5).toFixed(2)}) scaleX(${fromRight ? -1 : 1})`;
+      el.appendChild(createBirdSVG(size, color));
+      overlay.appendChild(el);
+
+      const birdData = { el, startX, endX, startY, waveAmp, waveFreq, speed, depth, startTime: performance.now(), fromRight };
+      NatureEngine.birds.push(birdData);
+    }
+
+    /* ─── BIRD ANIMATION LOOP ─── */
+    let birdRAF = null;
+    function animateBirds(now) {
+      if (!NatureEngine.active) { birdRAF = null; return; }
+
+      const overlay = document.getElementById('nature-overlay');
+      const panX = NatureEngine.mapPanOffset.x;
+
+      for (let i = NatureEngine.birds.length - 1; i >= 0; i--) {
+        const b = NatureEngine.birds[i];
+        const elapsed = (now - b.startTime) / 1000;
+        const progress = elapsed / b.speed;
+        if (progress > 1) {
+          b.el.remove();
+          NatureEngine.birds.splice(i, 1);
+          continue;
+        }
+        const x = b.startX + (b.endX - b.startX) * progress + panX * b.depth * 0.15;
+        const y = b.startY + Math.sin(elapsed * b.waveFreq) * b.waveAmp;
+        b.el.style.left = x + 'px';
+        b.el.style.top  = y + 'px';
+      }
+      birdRAF = requestAnimationFrame(animateBirds);
+    }
+
+    /* ─── SPAWN CLOUD WISPS ─── */
+    function spawnCloud() {
+      const overlay = document.getElementById('nature-overlay');
+      if (!overlay.classList.contains('active')) return;
+
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const w = 200 + Math.random() * 400;
+      const h = 80 + Math.random() * 150;
+      const startX = vw + 100;
+      const y = Math.random() * vh * 0.5;
+      const speed = 40 + Math.random() * 60;
+      const opacity = 0.04 + Math.random() * 0.1;
+
+      const el = document.createElement('div');
+      el.className = 'cloud-wisp';
+      el.style.width  = w + 'px';
+      el.style.height  = h + 'px';
+      el.style.left    = startX + 'px';
+      el.style.top     = y + 'px';
+      el.style.background = currentStyleKey === 'satellite'
+        ? `rgba(200, 210, 220, ${opacity})`
+        : `rgba(255, 255, 255, ${opacity * 2.5})`;
+      overlay.appendChild(el);
+
+      const cloudData = { el, startX, y, w, speed, startTime: performance.now() };
+      NatureEngine.clouds.push(cloudData);
+    }
+
+    let cloudRAF = null;
+    function animateClouds(now) {
+      if (!NatureEngine.active) { cloudRAF = null; return; }
+
+      const vw = window.innerWidth;
+      const panX = NatureEngine.mapPanOffset.x;
+
+      for (let i = NatureEngine.clouds.length - 1; i >= 0; i--) {
+        const c = NatureEngine.clouds[i];
+        const elapsed = (now - c.startTime) / 1000;
+        const x = c.startX - elapsed * (vw + c.w + 200) / c.speed + panX * 0.05;
+        if (x < -(c.w + 50)) {
+          c.el.remove();
+          NatureEngine.clouds.splice(i, 1);
+          continue;
+        }
+        c.el.style.transform = `translateX(${x - c.startX}px)`;
+      }
+      cloudRAF = requestAnimationFrame(animateClouds);
+    }
+
+    /* ─── AMBIENT AUDIO (Web Audio API — no files needed) ─── */
+    function initAmbientAudio() {
+      if (NatureEngine.audioCtx) return;
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      NatureEngine.audioCtx = ctx;
+
+      // Master gain
+      const masterGain = ctx.createGain();
+      masterGain.gain.value = 0;
+      masterGain.connect(ctx.destination);
+      NatureEngine.masterGain = masterGain;
+
+      // ── Wind: filtered noise ──
+      const windBuf = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
+      const windData = windBuf.getChannelData(0);
+      for (let i = 0; i < windData.length; i++) windData[i] = (Math.random() * 2 - 1) * 0.3;
+      const windSrc = ctx.createBufferSource();
+      windSrc.buffer = windBuf;
+      windSrc.loop = true;
+      const windFilter = ctx.createBiquadFilter();
+      windFilter.type = 'lowpass';
+      windFilter.frequency.value = 400;
+      windFilter.Q.value = 0.7;
+      const windGain = ctx.createGain();
+      windGain.gain.value = 0.08;
+      windSrc.connect(windFilter).connect(windGain).connect(masterGain);
+      windSrc.start();
+
+      // Modulate wind filter for natural feel
+      const windLFO = ctx.createOscillator();
+      windLFO.type = 'sine';
+      windLFO.frequency.value = 0.15;
+      const windLFOGain = ctx.createGain();
+      windLFOGain.gain.value = 200;
+      windLFO.connect(windLFOGain).connect(windFilter.frequency);
+      windLFO.start();
+
+      NatureEngine.audioNodes.push(windSrc, windLFO);
+
+      // ── Chirps: scheduled oscillator bursts ──
+      function scheduleChirp() {
+        if (!NatureEngine.active) return;
+        const now = ctx.currentTime;
+        const chirpGain = ctx.createGain();
+        chirpGain.connect(masterGain);
+
+        // Random bird-like frequencies
+        const baseFreq = 2200 + Math.random() * 3000;
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        const noteCount = 2 + Math.floor(Math.random() * 4);
+
+        for (let n = 0; n < noteCount; n++) {
+          const t = now + n * (0.07 + Math.random() * 0.08);
+          const freq = baseFreq + (Math.random() - 0.5) * 800;
+          osc.frequency.setValueAtTime(freq, t);
+          osc.frequency.linearRampToValueAtTime(freq + (Math.random() > 0.5 ? 300 : -200), t + 0.05);
+        }
+
+        const duration = noteCount * 0.12;
+        chirpGain.gain.setValueAtTime(0, now);
+        chirpGain.gain.linearRampToValueAtTime(0.04 + Math.random() * 0.04, now + 0.01);
+        chirpGain.gain.setValueAtTime(0.04, now + duration - 0.03);
+        chirpGain.gain.linearRampToValueAtTime(0, now + duration);
+
+        // Pan slightly left or right
+        const panner = ctx.createStereoPanner();
+        panner.pan.value = (Math.random() - 0.5) * 1.6;
+        osc.connect(panner).connect(chirpGain);
+
+        osc.start(now);
+        osc.stop(now + duration + 0.05);
+
+        // Schedule next chirp
+        const nextDelay = 1500 + Math.random() * 4000;
+        setTimeout(scheduleChirp, nextDelay);
+      }
+
+      // Start a few chirp chains with different timings
+      setTimeout(scheduleChirp, 500);
+      setTimeout(scheduleChirp, 2200);
+      setTimeout(scheduleChirp, 4000);
+
+      // ── Gentle rustling leaves overlay ──
+      const rustleBuf = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate);
+      const rustleData = rustleBuf.getChannelData(0);
+      for (let i = 0; i < rustleData.length; i++) {
+        rustleData[i] = (Math.random() * 2 - 1) * 0.15;
+      }
+      const rustleSrc = ctx.createBufferSource();
+      rustleSrc.buffer = rustleBuf;
+      rustleSrc.loop = true;
+      const rustleFilter = ctx.createBiquadFilter();
+      rustleFilter.type = 'bandpass';
+      rustleFilter.frequency.value = 6000;
+      rustleFilter.Q.value = 0.5;
+      const rustleGain = ctx.createGain();
+      rustleGain.gain.value = 0.03;
+      rustleSrc.connect(rustleFilter).connect(rustleGain).connect(masterGain);
+      rustleSrc.start();
+      NatureEngine.audioNodes.push(rustleSrc);
+    }
+
+    function fadeAudioIn() {
+      if (!NatureEngine.audioCtx || !NatureEngine.masterGain) return;
+      if (NatureEngine.audioCtx.state === 'suspended') NatureEngine.audioCtx.resume();
+      if (!NatureEngine.audioMuted) {
+        NatureEngine.masterGain.gain.linearRampToValueAtTime(1, NatureEngine.audioCtx.currentTime + 2);
+      }
+    }
+
+    function fadeAudioOut() {
+      if (!NatureEngine.audioCtx || !NatureEngine.masterGain) return;
+      NatureEngine.masterGain.gain.linearRampToValueAtTime(0, NatureEngine.audioCtx.currentTime + 1.5);
+    }
+
+    function toggleAmbientSound() {
+      NatureEngine.audioMuted = !NatureEngine.audioMuted;
+      const btn = document.getElementById('sound-toggle');
+      if (NatureEngine.audioMuted) {
+        btn.textContent = '🔇';
+        fadeAudioOut();
+      } else {
+        btn.textContent = '🔊';
+        if (NatureEngine.active) fadeAudioIn();
+      }
+    }
+
+    /* ─── MAP PAN TRACKING (for bird parallax) ─── */
+    function trackMapPan() {
+      map.on('move', () => {
+        const c = map.getCenter();
+        if (NatureEngine.lastCenter) {
+          const dx = (c.lng - NatureEngine.lastCenter.lng) * 800;
+          const dy = (c.lat - NatureEngine.lastCenter.lat) * -800;
+          NatureEngine.mapPanOffset.x += dx;
+          NatureEngine.mapPanOffset.y += dy;
+          // Decay towards 0
+          NatureEngine.mapPanOffset.x *= 0.92;
+          NatureEngine.mapPanOffset.y *= 0.92;
+        }
+        NatureEngine.lastCenter = { lng: c.lng, lat: c.lat };
+      });
+    }
+    trackMapPan();
+
+    /* ─── START / STOP NATURE ─── */
+    function startNatureEffects() {
+      if (NatureEngine.active) return;
+      NatureEngine.active = true;
+      document.getElementById('nature-overlay').classList.add('active');
+      document.getElementById('sound-toggle').classList.add('visible');
+
+      // Spawn initial birds
+      for (let i = 0; i < 4; i++) setTimeout(() => spawnBird(), i * 600);
+      // Spawn initial clouds
+      for (let i = 0; i < 3; i++) setTimeout(() => spawnCloud(), i * 800);
+
+      // Continue spawning
+      NatureEngine.birdTimer = setInterval(() => {
+        if (NatureEngine.birds.length < 10) spawnBird();
+      }, 2500 + Math.random() * 2000);
+
+      NatureEngine.cloudTimer = setInterval(() => {
+        if (NatureEngine.clouds.length < 5) spawnCloud();
+      }, 8000 + Math.random() * 6000);
+
+      // Start animation loops
+      birdRAF  = requestAnimationFrame(animateBirds);
+      cloudRAF = requestAnimationFrame(animateClouds);
+
+      // Audio
+      initAmbientAudio();
+      if (!NatureEngine.audioMuted) {
+        document.getElementById('sound-toggle').textContent = '🔊';
+        fadeAudioIn();
+      }
+    }
+
+    function stopNatureEffects() {
+      NatureEngine.active = false;
+      document.getElementById('nature-overlay').classList.remove('active');
+      document.getElementById('sound-toggle').classList.remove('visible');
+
+      if (NatureEngine.birdTimer) { clearInterval(NatureEngine.birdTimer); NatureEngine.birdTimer = null; }
+      if (NatureEngine.cloudTimer) { clearInterval(NatureEngine.cloudTimer); NatureEngine.cloudTimer = null; }
+      if (birdRAF) { cancelAnimationFrame(birdRAF); birdRAF = null; }
+      if (cloudRAF) { cancelAnimationFrame(cloudRAF); cloudRAF = null; }
+
+      // Clean up elements
+      NatureEngine.birds.forEach(b => b.el.remove());
+      NatureEngine.clouds.forEach(c => c.el.remove());
+      NatureEngine.birds = [];
+      NatureEngine.clouds = [];
+      NatureEngine.mapPanOffset = { x: 0, y: 0 };
+
+      fadeAudioOut();
     }
   </script>
 </body>
