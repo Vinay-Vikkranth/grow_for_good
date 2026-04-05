@@ -37,6 +37,52 @@
       --font-mono:    'Space Mono', monospace;
     }
 
+    /* ─── DARK THEME ─── */
+    body.dark {
+      --bg:           #121a12;
+      --bg-panel:     rgba(18, 26, 18, 0.97);
+      --bg-card:      #1a261a;
+      --bg-card2:     #223022;
+      --green:        #7acd5f;
+      --green-soft:   #5fb84a;
+      --green-sage:   #8dd978;
+      --green-dim:    rgba(122, 205, 95, 0.1);
+      --green-border: rgba(122, 205, 95, 0.28);
+      --text:         #e4e8e0;
+      --text-mid:     #c4cabe;
+      --muted:        #8a9a7e;
+      --border:       rgba(200, 220, 190, 0.16);
+    }
+    body.dark .intro-globe-side {
+      background: linear-gradient(
+        to right,
+        rgba(18, 26, 18, 0.65) 0%,
+        rgba(18, 26, 18, 0.2) 30%,
+        transparent 60%
+      );
+    }
+    body.dark .intro-panel::before {
+      background-image:
+        linear-gradient(rgba(122,205,95,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(122,205,95,0.06) 1px, transparent 1px);
+    }
+    body.dark #topbar {
+      background: rgba(18, 26, 18, 0.96);
+    }
+    body.dark #zone-hint {
+      background: rgba(18, 26, 18, 0.94);
+    }
+    body.dark #zone-sidebar {
+      background: rgba(18, 26, 18, 0.98);
+    }
+    body.dark #ai-result-panel {
+      background: rgba(18, 26, 18, 0.98);
+    }
+    body.dark #toast {
+      background: var(--green);
+      color: #121a12;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
@@ -402,24 +448,52 @@
 
     .nav-right { display: flex; align-items: center; gap: 10px; }
 
-    #style-toggle-btn {
-      padding: 8px 20px;
-      background: transparent;
+    /* ═══════════════════════════════════════════
+       FLOATING THEME TOGGLE — always visible
+    ═══════════════════════════════════════════ */
+    #theme-toggle {
+      position: fixed;
+      top: 16px;
+      right: 20px;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: var(--bg-panel);
       border: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+      overflow: hidden;
+      transition: background 0.3s, border-color 0.3s;
+    }
+    .theme-opt {
+      padding: 9px 16px;
+      background: transparent;
+      border: none;
       color: var(--muted);
       font-family: var(--font-mono);
-      font-size: 0.58rem;
-      letter-spacing: 0.18em;
+      font-size: 0.54rem;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
-      clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
-      transition: border-color 0.2s, color 0.2s, background 0.2s;
       white-space: nowrap;
+      transition: background 0.25s, color 0.25s;
     }
-    #style-toggle-btn:hover { border-color: var(--green); color: var(--green); }
-    #style-toggle-btn.active {
+    .theme-opt:hover { color: var(--text); }
+    .theme-opt.active {
       background: var(--green);
       color: var(--bg);
-      border-color: var(--green);
+    }
+    .theme-divider {
+      width: 1px;
+      height: 18px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    /* When topbar is visible, push toggle below it */
+    #topbar.visible ~ #theme-toggle {
+      top: 72px;
     }
 
     /* ═══════════════════════════════════════════
@@ -815,10 +889,16 @@
     <div class="nav-logo">PLANTMAP</div>
     <div class="nav-stats" id="trees-planted-count">0 TREES PLACED</div>
     <div class="nav-right">
-      <button id="style-toggle-btn" onclick="toggleMapStyle()">🛰 SATELLITE</button>
       <button id="reset-btn" onclick="resetToGlobe()">↩ NEW LOCATION</button>
     </div>
   </nav>
+
+  <!-- GLOBAL THEME TOGGLE -->
+  <div id="theme-toggle">
+    <button class="theme-opt active" data-theme="light" onclick="switchTheme('light')">☀ LIGHT</button>
+    <div class="theme-divider"></div>
+    <button class="theme-opt" data-theme="satellite" onclick="switchTheme('satellite')">🛰 SATELLITE</button>
+  </div>
 
   <!-- ZONE HINT -->
   <div id="zone-hint">↓ CLICK A GLOWING ZONE TO ANALYZE SOIL &amp; PLANT</div>
@@ -1352,19 +1432,24 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
     }
 
-    /* ─── MAP STYLE TOGGLE ─── */
+    /* ─── THEME SYSTEM ─── */
     const MAP_STYLES = {
-      light:     { url: 'mapbox://styles/mapbox/light-v11',              label: '🛰 SATELLITE', buildingColor: '#d8d2c8' },
-      satellite: { url: 'mapbox://styles/mapbox/satellite-streets-v12',  label: '🗺 LIGHT MAP',  buildingColor: '#c0bfbd' }
+      light:     { url: 'mapbox://styles/mapbox/light-v11',              buildingColor: '#d8d2c8' },
+      satellite: { url: 'mapbox://styles/mapbox/satellite-streets-v12',  buildingColor: '#c0bfbd' }
     };
     let currentStyleKey = 'light';
 
-    function toggleMapStyle() {
-      currentStyleKey = currentStyleKey === 'light' ? 'satellite' : 'light';
-      const next = MAP_STYLES[currentStyleKey];
-      const btn = document.getElementById('style-toggle-btn');
-      btn.textContent = next.label;
-      btn.classList.toggle('active', currentStyleKey === 'satellite');
+    function switchTheme(key) {
+      if (key === currentStyleKey) return;
+      currentStyleKey = key;
+
+      // Update toggle buttons
+      document.querySelectorAll('.theme-opt').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.theme === key);
+      });
+
+      // Toggle dark class on body
+      document.body.classList.toggle('dark', key === 'satellite');
 
       // Save current camera state
       const center  = map.getCenter();
@@ -1372,14 +1457,14 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       const pitch   = map.getPitch();
       const bearing = map.getBearing();
 
-      map.setStyle(next.url);
+      map.setStyle(MAP_STYLES[key].url);
 
       map.once('style.load', () => {
         // Restore camera
         map.jumpTo({ center, zoom, pitch, bearing });
 
         // Re-apply fog + terrain
-        if (currentStyleKey === 'light') {
+        if (key === 'light') {
           map.setFog({
             color:            'rgb(228, 218, 200)',
             'high-color':     'rgb(180, 200, 220)',
@@ -1389,7 +1474,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
           });
         } else {
           map.setFog({
-            color:            'rgb(186, 210, 235)',
+            color:            'rgb(20, 20, 30)',
             'high-color':     'rgb(36, 92, 223)',
             'horizon-blend':  0.02,
             'space-color':    'rgb(11, 11, 25)',
@@ -1419,17 +1504,17 @@ For the "model" field use one of: oak, pine, maple, sapling`;
           const count = AppState.placedTrees.length;
           document.getElementById('trees-planted-count').textContent = `${count} TREE${count!==1?'S':''} PLACED`;
         }
+
+        // Restart globe rotation if on intro
+        if (AppState.phase === 'globe') startGlobeRotation();
       });
     }
 
     /* ─── RESET ─── */
     function resetToGlobe() {
-      // Reset style to light if needed
+      // Reset theme to light if needed
       if (currentStyleKey !== 'light') {
-        currentStyleKey = 'light';
-        document.getElementById('style-toggle-btn').textContent = MAP_STYLES.light.label;
-        document.getElementById('style-toggle-btn').classList.remove('active');
-        map.setStyle(MAP_STYLES.light.url);
+        switchTheme('light');
       }
       AppState.placedTrees.forEach(({layerId}) => { try { if(map.getLayer(layerId)) map.removeLayer(layerId); } catch{} });
       AppState.placedTrees = [];
