@@ -1108,19 +1108,28 @@
     }
 
     // Scroll-to-zoom: forward wheel events to the map so users can zoom into the globe
+    let scrollZoomTarget = null;
+    let scrollZoomRAF = null;
     document.querySelector('.intro-globe-side').addEventListener('wheel', (e) => {
       e.preventDefault();
       // Stop globe rotation on first scroll
       stopGlobeRotation();
 
-      // Forward scroll to map zoom
-      const currentZoom = map.getZoom();
-      const delta = -e.deltaY * 0.002; // positive scroll-up = zoom in
-      const newZoom = Math.max(1, Math.min(currentZoom + delta, 20));
-      map.easeTo({ zoom: newZoom, duration: 100 });
+      // Accumulate scroll into a smooth target zoom
+      const currentZoom = scrollZoomTarget !== null ? scrollZoomTarget : map.getZoom();
+      const delta = -e.deltaY * 0.003;
+      scrollZoomTarget = Math.max(1, Math.min(currentZoom + delta, 20));
+
+      // Debounce: only one smooth easeTo at a time
+      if (!scrollZoomRAF) {
+        scrollZoomRAF = requestAnimationFrame(() => {
+          map.easeTo({ zoom: scrollZoomTarget, duration: 600, easing: t => 1 - Math.pow(1 - t, 3) });
+          scrollZoomRAF = null;
+        });
+      }
 
       // Once zoomed in enough, prompt for location
-      if (newZoom >= 4 && !introInteracted) {
+      if (scrollZoomTarget >= 4 && !introInteracted) {
         handleIntroEnter();
       }
     }, { passive: false });
@@ -1136,7 +1145,7 @@
         stopGlobeRotation();
         const currentZoom = map.getZoom();
         const newZoom = Math.min(currentZoom + 2, 20);
-        map.easeTo({ zoom: newZoom, duration: 600 });
+        map.easeTo({ zoom: newZoom, duration: 1200, easing: t => 1 - Math.pow(1 - t, 3) });
         if (newZoom >= 4 && !introInteracted) {
           handleIntroEnter();
         }
@@ -1198,21 +1207,32 @@
       // Fade out BGM as we zoom in
       fadeAudioOut();
 
-      map.flyTo({ center: [lng, lat], zoom: 5, pitch: 20, duration: 2000, essential: true });
-      setTimeout(() => {
-        map.flyTo({ center: [lng, lat], zoom: 16, pitch: 62, bearing: -20, duration: 3500, essential: true });
-        setTimeout(() => {
-          AppState.phase = 'city';
-          enable3DBuildings();
-          loadPlantingZones(lng, lat);
-          document.getElementById('topbar').classList.add('visible');
-          document.getElementById('hint-text').classList.add('visible');
-          const hint = document.getElementById('zone-hint');
-          hint.classList.add('visible');
-          setTimeout(() => hint.classList.remove('visible'), 4500);
-          startNatureEffects();
-        }, 3600);
-      }, 2200);
+      // Smooth single continuous fly-to with cinematic curve
+      map.flyTo({
+        center: [lng, lat],
+        zoom: 16,
+        pitch: 62,
+        bearing: -20,
+        duration: 6000,
+        curve: 1.8,
+        speed: 0.6,
+        easing: t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+        essential: true
+      });
+
+      // Wait for the fly animation to finish, then set up city
+      map.once('moveend', () => {
+        if (AppState.phase !== 'flying') return;
+        AppState.phase = 'city';
+        enable3DBuildings();
+        loadPlantingZones(lng, lat);
+        document.getElementById('topbar').classList.add('visible');
+        document.getElementById('hint-text').classList.add('visible');
+        const hint = document.getElementById('zone-hint');
+        hint.classList.add('visible');
+        setTimeout(() => hint.classList.remove('visible'), 4500);
+        startNatureEffects();
+      });
     }
 
     /* ─── 3D BUILDINGS ─── */
@@ -1611,13 +1631,23 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       AppState.phase = 'globe'; AppState.userLocation = null; AppState.selectedZone = null;
       AppState.selectedZoneCoords = null; AppState.uploadedImageB64 = null; AppState.aiResults = null;
       introInteracted = false;
-      map.flyTo({ center: [0,20], zoom: 1.5, pitch: 0, bearing: 0, duration: 2500, essential: true });
+      map.flyTo({
+        center: [0, 20],
+        zoom: 1.5,
+        pitch: 0,
+        bearing: 0,
+        duration: 3500,
+        curve: 1.6,
+        speed: 0.5,
+        easing: t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+        essential: true
+      });
       setTimeout(() => {
         document.getElementById('intro-screen').classList.remove('exiting');
         document.getElementById('city-search-wrap').classList.remove('visible');
         document.getElementById('city-input').value = '';
         startGlobeRotation();
-      }, 2600);
+      }, 3600);
     }
 
     /* ═══════════════════════════════════════════
