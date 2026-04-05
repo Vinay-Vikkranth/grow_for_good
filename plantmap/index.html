@@ -495,6 +495,42 @@
 
     .nav-right { display: flex; align-items: center; gap: 10px; }
 
+    #nav-location {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      max-width: 240px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    #nav-location.visible { opacity: 1; }
+    #nav-location::before { content: '📍 '; font-size: 0.7rem; }
+
+    #drag-hint {
+      position: fixed;
+      bottom: 72px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(30,30,24,0.88);
+      color: var(--green);
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      letter-spacing: 0.18em;
+      padding: 8px 18px;
+      border: 1px solid var(--green-border);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.4s;
+      z-index: 50;
+      white-space: nowrap;
+    }
+    #drag-hint.visible { opacity: 1; }
+
     /* ═══════════════════════════════════════════
        FLOATING THEME TOGGLE — always visible
     ═══════════════════════════════════════════ */
@@ -788,19 +824,33 @@
     .tree-cards::-webkit-scrollbar { display: none; }
 
     .tree-card {
-      min-width: 200px;
+      min-width: 220px;
       flex-shrink: 0;
       background: var(--bg-card);
       border: 1px solid var(--border);
-      padding: 18px;
+      padding: 0 0 14px;
       cursor: pointer;
       transition: border-color 0.2s, transform 0.2s;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 0;
       clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+      overflow: hidden;
     }
     .tree-card:hover { border-color: var(--green); transform: translateY(-3px); }
+    .tree-card-img {
+      width: 100%; height: 130px;
+      object-fit: cover; display: block;
+      background: var(--green-dim);
+      flex-shrink: 0;
+    }
+    .tree-card-img-placeholder {
+      width: 100%; height: 130px;
+      background: var(--green-dim);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 3rem; color: var(--green); flex-shrink: 0;
+    }
+    .tree-card-body { padding: 14px 16px 0; display: flex; flex-direction: column; gap: 8px; flex: 1; }
     .tree-card-top { display: flex; align-items: flex-start; gap: 12px; }
     .tree-number {
       width: 30px; height: 30px;
@@ -845,6 +895,21 @@
     ═══════════════════════════════════════════ */
     body.placing-mode #map { cursor: crosshair !important; }
     body.placing-mode .mapboxgl-canvas { cursor: crosshair !important; }
+    /* Prevent zone number markers from intercepting placement clicks */
+    body.placing-mode .mapboxgl-marker:not(.place-ghost-marker) { pointer-events: none !important; }
+
+    @keyframes treeGrow {
+      0%   { transform: scale(0) translateY(20px); opacity: 0; }
+      70%  { transform: scale(1.15) translateY(-4px); opacity: 1; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    .placed-plant-marker { animation: treeGrow 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
+    .placed-plant-emoji  { font-size: 2.6rem; line-height: 1; filter: drop-shadow(0 3px 8px rgba(0,0,0,0.55)); }
+    .placed-plant-label  {
+      font-family: var(--font-display); font-size: 0.52rem; letter-spacing: 0.1em;
+      background: var(--green); color: var(--bg); padding: 2px 7px; margin-top: 3px;
+      white-space: nowrap; clip-path: polygon(0 0,calc(100% - 4px) 0,100% 4px,100% 100%,0 100%);
+    }
 
     #place-banner {
       position: fixed;
@@ -1209,12 +1274,16 @@
   <!-- TOP NAV -->
   <nav id="topbar">
     <div class="nav-logo">PLANTMAP</div>
-    <button id="find-land-btn" class="hidden" onclick="findUnusedLand()">� SCAN MY PROPERTY</button>
+    <div id="nav-location"></div>
+    <button id="find-land-btn" class="hidden" onclick="findUnusedLand()">🌱 SCAN MY PROPERTY</button>
     <div class="nav-stats" id="trees-planted-count">0 TREES PLACED</div>
     <div class="nav-right">
       <button id="reset-btn" onclick="resetToGlobe()">↩ NEW LOCATION</button>
     </div>
   </nav>
+
+  <!-- DRAG HINT -->
+  <div id="drag-hint">DRAG PIN TO CHANGE LOCATION — THEN CLICK SCAN</div>
 
   <!-- GLOBAL THEME TOGGLE -->
   <div id="theme-toggle">
@@ -1348,7 +1417,8 @@
       center:     [-95, 35],
       pitch:      0,
       bearing:    0,
-      antialias:  true
+      antialias:  true,
+      preserveDrawingBuffer: true
     });
 
     // Globe auto-rotation
@@ -1455,6 +1525,29 @@
       }
     }, { passive: true });
 
+    /* ─── REVERSE GEOCODE — get neighbourhood/city, NOT building names ─── */
+    async function reverseGeocode(lng, lat) {
+      try {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json`
+          + `?access_token=${CONFIG.MAPBOX_TOKEN}&types=neighborhood,locality,place&limit=1`;
+        const res  = await fetch(url);
+        if (!res.ok) return null;
+        const json = await res.json();
+        if (!json.features?.length) return null;
+        const f = json.features[0];
+        // Build "Neighbourhood, City" label
+        const parts = (f.place_name || '').split(',').map(s => s.trim()).slice(0, 2);
+        return parts.join(', ');
+      } catch { return null; }
+    }
+
+    function setNavLocation(text) {
+      const el = document.getElementById('nav-location');
+      if (!el) return;
+      if (text) { el.textContent = text; el.classList.add('visible'); }
+      else       { el.classList.remove('visible'); }
+    }
+
     /* ─── LOCATION FLOW ─── */
     document.getElementById('allow-location-btn').addEventListener('click', () => {
       if (!navigator.geolocation) { showToast('GEOLOCATION NOT SUPPORTED'); return; }
@@ -1467,6 +1560,17 @@
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
+    });
+
+    // Auto-request GPS as soon as the map finishes loading — no scroll needed
+    map.once('load', () => {
+      if (navigator.geolocation && !introInteracted) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => { introInteracted = true; flyToLocation(pos.coords.longitude, pos.coords.latitude); },
+          () => { /* silently fall back to manual search */ },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        );
+      }
     });
 
     document.getElementById('search-location-btn').addEventListener('click', () => {
@@ -1536,7 +1640,8 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         if (!json.features?.length) { showToast('CITY NOT FOUND — TRY AGAIN'); return; }
-        const [lng, lat] = json.features[0].center;
+        const feat = json.features[0];
+        const [lng, lat] = feat.center;
         flyToLocation(lng, lat);
       } catch (err) {
         showToast('SEARCH FAILED — CHECK YOUR TOKEN');
@@ -1553,7 +1658,6 @@
       stopGradualZoom();
       document.getElementById('intro-screen').classList.add('exiting');
 
-      // Smooth single continuous fly-to with cinematic curve
       map.flyTo({
         center: [lng, lat],
         zoom: 16,
@@ -1566,24 +1670,49 @@
         essential: true
       });
 
-      // Wait for the fly animation to finish, then set up city
-      map.once('moveend', () => {
+      map.once('moveend', async () => {
         if (AppState.phase !== 'flying') return;
         AppState.phase = 'city';
         enable3DBuildings();
 
-        // Add location pin marker
+        // ── Draggable pin marker ──
         if (AppState.locationMarker) { AppState.locationMarker.remove(); AppState.locationMarker = null; }
         const markerEl = document.createElement('div');
         markerEl.innerHTML = `<svg width="36" height="50" viewBox="0 0 36 50" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M18 0C8.06 0 0 8.06 0 18c0 13.5 18 32 18 32s18-18.5 18-32C36 8.06 27.94 0 18 0z" fill="#e53935"/>
           <circle cx="18" cy="18" r="8" fill="white"/>
         </svg>`;
-        markerEl.style.cursor = 'pointer';
+        markerEl.style.cursor = 'grab';
         markerEl.style.filter = 'drop-shadow(0 2px 6px rgba(0,0,0,0.5))';
-        AppState.locationMarker = new mapboxgl.Marker({ element: markerEl, anchor: 'bottom' })
+
+        AppState.locationMarker = new mapboxgl.Marker({ element: markerEl, anchor: 'bottom', draggable: true })
           .setLngLat([lng, lat])
           .addTo(map);
+
+        // When drag starts, show hint
+        AppState.locationMarker.on('dragstart', () => {
+          markerEl.style.cursor = 'grabbing';
+          const dh = document.getElementById('drag-hint');
+          dh.classList.add('visible');
+          setTimeout(() => dh.classList.remove('visible'), 4000);
+        });
+
+        // When drag ends, update location + reverse geocode
+        AppState.locationMarker.on('dragend', async () => {
+          markerEl.style.cursor = 'grab';
+          const { lng: newLng, lat: newLat } = AppState.locationMarker.getLngLat();
+          AppState.userLocation = { lng: newLng, lat: newLat };
+          showToast('PIN MOVED — CLICK SCAN MY PROPERTY TO ANALYZE THIS SPOT');
+          // Clear old zones
+          clearZoneMarkers();
+          ['zones-fill','zones-outline'].forEach(id => { try { if(map.getLayer(id)) map.removeLayer(id); } catch{} });
+          try { if(map.getSource('planting-zones')) map.removeSource('planting-zones'); } catch{}
+          document.getElementById('zone-sidebar').classList.remove('open');
+          document.getElementById('ai-result-panel').classList.remove('open');
+          // Update location label
+          const name = await reverseGeocode(newLng, newLat);
+          if (name) setNavLocation(name);
+        });
 
         document.getElementById('topbar').classList.add('visible');
         document.getElementById('find-land-btn').classList.remove('hidden');
@@ -1592,6 +1721,15 @@
         hint.classList.add('visible');
         setTimeout(() => hint.classList.remove('visible'), 4500);
         startNatureEffects();
+
+        // ── Reverse geocode to show proper location name (not building) ──
+        const locationName = await reverseGeocode(lng, lat);
+        if (locationName) setNavLocation(locationName);
+
+        // Show drag hint briefly on first load
+        const dh = document.getElementById('drag-hint');
+        dh.classList.add('visible');
+        setTimeout(() => dh.classList.remove('visible'), 3500);
       });
     }
 
@@ -1600,25 +1738,351 @@
 
     function findUnusedLand() {
       if (!AppState.userLocation) { showToast('SET YOUR LOCATION FIRST'); return; }
-      const { lng, lat } = AppState.userLocation;
+
+      // Always use the CURRENT marker position (may have been dragged)
+      const scanLng = AppState.locationMarker
+        ? AppState.locationMarker.getLngLat().lng
+        : AppState.userLocation.lng;
+      const scanLat = AppState.locationMarker
+        ? AppState.locationMarker.getLngLat().lat
+        : AppState.userLocation.lat;
+      AppState.userLocation = { lng: scanLng, lat: scanLat };
+
       const btn = document.getElementById('find-land-btn');
       btn.textContent = '🔍 ANALYZING...';
       btn.disabled = true;
 
+      // Fly to top-down view centred on the pin for a clean capture
       map.easeTo({
-        center: [lng, lat],
+        center: [scanLng, scanLat],
         zoom: 18.5,
-        pitch: 55,
+        pitch: 0,
         bearing: 0,
         duration: 1500,
         easing: t => 1 - Math.pow(1 - t, 3)
       });
 
-      setTimeout(async () => {
-        await detectPlantableZones(lng, lat);
+      map.once('moveend', async () => {
+        // Wait for satellite tiles to fully render
+        await new Promise(r => setTimeout(r, 900));
+        if (CONFIG.ANTHROPIC_KEY) {
+          await aiScanPlantableAreas();
+        } else {
+          await detectPlantableZones(scanLng, scanLat);
+        }
         btn.textContent = '🌱 SCAN MY PROPERTY';
         btn.disabled = false;
-      }, 2000);
+      });
+    }
+
+    /* ─── PIXEL CLASSIFIER — is this pixel plantable ground? ─── */
+    function isPlantablePixel(r, g, b) {
+      const brightness = (r + g + b) / 3;
+      const maxCh = Math.max(r, g, b), minCh = Math.min(r, g, b);
+      const sat = maxCh > 0 ? (maxCh - minCh) / maxCh : 0;
+      if (brightness < 30) return false;                           // dark roads/asphalt
+      if (sat < 0.10 && brightness > 88) return false;            // grey concrete/pavement
+      if (sat < 0.16 && brightness > 150) return false;           // light grey/white
+      if (b > r + 15 && b > g) return false;                      // blue water/pools
+      const gDom = g - Math.max(r, b);
+      if (gDom > 10 && brightness > 35) return true;              // green vegetation
+      if (r > g && r > b && r > 75 && sat > 0.14 && brightness > 45 && brightness < 175) return true; // brown soil
+      if (r >= 90 && g >= 70 && b < 88 && sat > 0.10 && brightness < 155) return true; // olive/dry scrub
+      return false;
+    }
+
+    /* ─── RAMER-DOUGLAS-PEUCKER POLYGON SIMPLIFICATION ─── */
+    function rdpSimplify(pts, eps) {
+      if (pts.length <= 2) return pts;
+      const [x1, y1] = pts[0], [x2, y2] = pts[pts.length - 1];
+      const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+      let maxD = 0, idx = 0;
+      for (let i = 1; i < pts.length - 1; i++) {
+        const d = len > 0
+          ? Math.abs(dy * pts[i][0] - dx * pts[i][1] + x2 * y1 - y2 * x1) / len
+          : Math.hypot(pts[i][0] - x1, pts[i][1] - y1);
+        if (d > maxD) { maxD = d; idx = i; }
+      }
+      if (maxD > eps) {
+        const left  = rdpSimplify(pts.slice(0, idx + 1), eps);
+        const right = rdpSimplify(pts.slice(idx), eps);
+        return [...left.slice(0, -1), ...right];
+      }
+      return [pts[0], pts[pts.length - 1]];
+    }
+
+    /* ─── AI VISION SCAN — vector mask + pixel segmentation ─── */
+    async function aiScanPlantableAreas() {
+      showToast('LOADING BUILDING & ROAD DATA...');
+
+      const mapCanvas = map.getCanvas();
+      const FW = mapCanvas.width, FH = mapCanvas.height;
+      const dpr = window.devicePixelRatio || 1;
+
+      // ── Step 1: Query all building + road features from rendered vector tiles ──
+      const styleLayerIds = (map.getStyle()?.layers || [])
+        .filter(l => {
+          const id = (l.id || '').toLowerCase();
+          const sl = (l['source-layer'] || '').toLowerCase();
+          return sl === 'building' || id.includes('building') ||
+                 sl === 'road'     || id.includes('road')     ||
+                 sl === 'parking'  || id.includes('parking')  ||
+                 id.includes('aeroway');
+        })
+        .map(l => l.id);
+
+      let obstacleFeats = [];
+      if (styleLayerIds.length) {
+        try { obstacleFeats = map.queryRenderedFeatures({ layers: styleLayerIds }); } catch {}
+      }
+
+      // ── Step 2: Rasterize obstacles onto a white mask canvas ──
+      // Black = potentially plantable, White = obstacle (building / road)
+      const maskCanvas = document.createElement('canvas');
+      maskCanvas.width = FW; maskCanvas.height = FH;
+      const mCtx = maskCanvas.getContext('2d');
+      mCtx.fillStyle = '#000';
+      mCtx.fillRect(0, 0, FW, FH);
+      mCtx.fillStyle = '#fff';
+      mCtx.strokeStyle = '#fff';
+
+      // Road width in canvas pixels: use ground resolution at current zoom + lat
+      const metersPerCssPx = (156543.034 * Math.cos(map.getCenter().lat * Math.PI / 180))
+                              / Math.pow(2, map.getZoom());
+      const mToPx = m => Math.max(6, Math.round((m / metersPerCssPx) * dpr));
+      const RW = {
+        motorway: mToPx(26), trunk: mToPx(22), primary: mToPx(18),
+        secondary: mToPx(14), tertiary: mToPx(11), street: mToPx(9),
+        residential: mToPx(9), service: mToPx(7), path: mToPx(5),
+        _default: mToPx(9)
+      };
+
+      // project [lng,lat] → physical canvas pixel
+      const proj = ([lng, lat]) => {
+        const p = map.project({ lng, lat });
+        return [p.x * dpr, p.y * dpr];
+      };
+
+      const maskPoly = rings => {
+        mCtx.beginPath();
+        for (const ring of rings) {
+          const [fx, fy] = proj(ring[0]);
+          mCtx.moveTo(fx, fy);
+          for (let i = 1; i < ring.length; i++) { const [px, py] = proj(ring[i]); mCtx.lineTo(px, py); }
+          mCtx.closePath();
+        }
+        mCtx.fill();
+      };
+
+      const maskLine = (coords, w) => {
+        if (coords.length < 2) return;
+        mCtx.lineWidth = w; mCtx.lineCap = 'round'; mCtx.lineJoin = 'round';
+        mCtx.beginPath();
+        const [fx, fy] = proj(coords[0]); mCtx.moveTo(fx, fy);
+        for (let i = 1; i < coords.length; i++) { const [px, py] = proj(coords[i]); mCtx.lineTo(px, py); }
+        mCtx.stroke();
+      };
+
+      for (const f of obstacleFeats) {
+        const g = f.geometry;
+        const isRoad = (f.layer?.['source-layer'] || '') === 'road';
+        const rw = RW[f.properties?.class] || RW._default;
+        if      (g.type === 'Polygon')      maskPoly(g.coordinates);
+        else if (g.type === 'MultiPolygon') g.coordinates.forEach(p => maskPoly(p));
+        else if (g.type === 'LineString'      && isRoad) maskLine(g.coordinates, rw);
+        else if (g.type === 'MultiLineString' && isRoad) g.coordinates.forEach(l => maskLine(l, rw));
+      }
+
+      // ── Step 3: Capture satellite pixels ──
+      showToast('CLASSIFYING PLANTABLE PIXELS...');
+      const satCanvas = document.createElement('canvas');
+      satCanvas.width = FW; satCanvas.height = FH;
+      satCanvas.getContext('2d').drawImage(mapCanvas, 0, 0);
+
+      let satPx, maskPx;
+      try {
+        satPx  = satCanvas.getContext('2d').getImageData(0, 0, FW, FH);
+        maskPx = mCtx.getImageData(0, 0, FW, FH);
+      } catch (e) {
+        showToast('PIXEL READ BLOCKED — SERVE VIA HTTP (NOT FILE://)');
+        return;
+      }
+
+      // ── Step 4: Classify pixels — skip any masked as obstacle ──
+      const SC = 4; // work at 1/4 physical resolution
+      const W = Math.ceil(FW / SC), H = Math.ceil(FH / SC);
+      const plantable = new Uint8Array(W * H);
+
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const sx = Math.min(x * SC, FW - 1), sy = Math.min(y * SC, FH - 1);
+          const fi = sy * FW + sx;
+          if (maskPx.data[fi * 4] > 100) continue; // white = obstacle
+          const si = fi * 4;
+          plantable[y * W + x] = isPlantablePixel(satPx.data[si], satPx.data[si+1], satPx.data[si+2]) ? 1 : 0;
+        }
+      }
+
+      // ── Step 5: BFS connected components (4-connected, no dilation to keep zones tight) ──
+      const labels = new Int32Array(W * H).fill(-1);
+      const compMeta = [];
+
+      for (let start = 0; start < W * H; start++) {
+        if (!plantable[start] || labels[start] !== -1) continue;
+        const cid = compMeta.length;
+        const stack = [start];
+        labels[start] = cid;
+        let size = 0, minX = W, minY = H, maxX = 0, maxY = 0;
+        while (stack.length) {
+          const curr = stack.pop(); size++;
+          const cx = curr % W, cy = (curr / W) | 0;
+          if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
+          if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
+          for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+            const nx = cx+dx, ny = cy+dy;
+            if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+              const ni = ny*W+nx;
+              if (plantable[ni] && labels[ni] === -1) { labels[ni] = cid; stack.push(ni); }
+            }
+          }
+        }
+        compMeta.push({ size, minX, minY, maxX, maxY });
+      }
+
+      // ── Step 6: Keep top 80 zones above minimum size ──
+      const MIN_PX = 18;
+      const validComps = compMeta
+        .map((m, i) => ({ ...m, id: i }))
+        .filter(c => c.size >= MIN_PX)
+        .sort((a, b) => b.size - a.size)
+        .slice(0, 80);
+
+      if (!validComps.length) {
+        showToast('NO PLANTABLE AREAS FOUND — ZOOM IN MORE');
+        return;
+      }
+
+      // ── Step 7: Scanline silhouette → precise polygon per zone ──
+      const features = [];
+
+      for (const comp of validComps) {
+        const { id, minX, minY, maxX, maxY } = comp;
+        const spanW = maxX - minX + 1;
+        const topRow = new Int32Array(spanW).fill(H);
+        const botRow = new Int32Array(spanW).fill(-1);
+
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            if (labels[y * W + x] !== id) continue;
+            const xi = x - minX;
+            if (y < topRow[xi]) topRow[xi] = y;
+            if (y > botRow[xi]) botRow[xi] = y;
+          }
+        }
+
+        const topPts = [], botPts = [];
+        for (let xi = 0; xi < spanW; xi++) {
+          if (topRow[xi] < H) topPts.push([(minX + xi) * SC, topRow[xi] * SC]);
+        }
+        for (let xi = spanW - 1; xi >= 0; xi--) {
+          if (botRow[xi] >= 0) botPts.push([(minX + xi) * SC, (botRow[xi] + 1) * SC]);
+        }
+        if (topPts.length + botPts.length < 4) continue;
+
+        const eps = SC * 2.5;
+        const ring = [...rdpSimplify(topPts, eps), ...rdpSimplify(botPts, eps), topPts[0]];
+
+        // physical canvas pixels → CSS pixels → lng/lat
+        const lnglatRing = ring.map(([px, py]) => {
+          const ll = map.unproject([
+            Math.max(0, Math.min(px / dpr, FW / dpr - 1)),
+            Math.max(0, Math.min(py / dpr, FH / dpr - 1))
+          ]);
+          return [ll.lng, ll.lat];
+        });
+
+        // Surface type from centroid pixel colour
+        const cpx = Math.min(Math.round((minX + maxX) / 2) * SC, FW - 1);
+        const cpy = Math.min(Math.round((minY + maxY) / 2) * SC, FH - 1);
+        const ci  = (cpy * FW + cpx) * 4;
+        const cr = satPx.data[ci], cg = satPx.data[ci+1], cb = satPx.data[ci+2];
+        const surfType  = (cg - Math.max(cr, cb)) > 10 ? 'lawn'
+                        : (cr > cg && cr - cb > 15)    ? 'bare_soil' : 'scrub';
+        const surfLabel = { lawn: 'Grass / Lawn', bare_soil: 'Bare Soil', scrub: 'Open Ground' }[surfType];
+
+        features.push({
+          type: 'Feature',
+          properties: {
+            id: features.length,
+            name: surfLabel,
+            type: surfType,
+            soil_type: surfType === 'bare_soil' ? 'Sandy / Loamy' : 'Loamy',
+            sun_exposure: 'Full Sun',
+            description: `${surfLabel} — detected via satellite + vector data`,
+            permit_required: false,
+            best_season: 'Year-round',
+            source: 'claude-vision',
+            ai_plants: '[]'
+          },
+          geometry: { type: 'Polygon', coordinates: [lnglatRing] }
+        });
+      }
+
+      if (!features.length) { showToast('COULD NOT TRACE OUTLINES — ZOOM IN MORE'); return; }
+
+      // ── Step 8: Draw all zones on the map immediately ──
+      clearZoneMarkers();
+      ['zones-fill','zones-outline'].forEach(lid => {
+        try { if (map.getLayer(lid)) map.removeLayer(lid); } catch {}
+      });
+      try { if (map.getSource('planting-zones')) map.removeSource('planting-zones'); } catch {}
+
+      loadPlantingZones(null, null, { type: 'FeatureCollection', features });
+      showToast(`MAPPED ${features.length} ZONES — FETCHING PLANT SUGGESTIONS...`);
+
+      // ── Step 9: One Claude call → regional plant recommendations ──
+      if (!CONFIG.ANTHROPIC_KEY) {
+        showToast(`${features.length} ZONES MAPPED — CLICK ANY ZONE TO EXPLORE`);
+        return;
+      }
+      try {
+        const imgB64 = satCanvas.toDataURL('image/jpeg', 0.75).split(',')[1];
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': CONFIG.ANTHROPIC_KEY,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify({
+            model: CONFIG.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
+            max_tokens: 1500,
+            messages: [{ role: 'user', content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imgB64 } },
+              { type: 'text', text: `Satellite map. Identify the region/climate from the visible landscape. Return the 5 best plants for grass areas and 5 best for bare soil areas here. Return ONLY valid JSON (no markdown):
+{"region":"...","climate":"...","lawn_plants":[{"name":"...","scientific":"...","reason":"...","co2_kg_yr":0,"model":"oak"}],"soil_plants":[{"name":"...","scientific":"...","reason":"...","co2_kg_yr":0,"model":"shrub"}]}` }
+            ]}]
+          })
+        });
+        if (res.ok) {
+          const body = await res.json();
+          const txt  = body.content[0].text.trim().replace(/^```[a-z]*\n?/,'').replace(/\n?```$/,'');
+          const data = JSON.parse(txt);
+          const lawnJson = JSON.stringify(data.lawn_plants || []);
+          const soilJson = JSON.stringify(data.soil_plants || data.lawn_plants || []);
+          features.forEach(f => {
+            f.properties.ai_plants = f.properties.type === 'bare_soil' ? soilJson : lawnJson;
+          });
+          if (map.getSource('planting-zones'))
+            map.getSource('planting-zones').setData({ type: 'FeatureCollection', features });
+        }
+      } catch (err) { console.warn('Plant suggestions failed:', err); }
+
+      showToast(`${features.length} ZONES MAPPED — CLICK ANY GREEN AREA FOR PLANT SUGGESTIONS`);
+      const hint = document.getElementById('zone-hint');
+      hint.classList.add('visible');
+      setTimeout(() => hint.classList.remove('visible'), 6000);
     }
 
     /* ─── SATELLITE GREEN-PIXEL VERIFICATION ─── */
@@ -2350,6 +2814,14 @@
       document.getElementById('soil-questionnaire').classList.add('hidden');
       document.getElementById('ai-loading').classList.add('hidden');
       document.getElementById('zone-sidebar').classList.add('open');
+
+      // Claude Vision zones already have plant suggestions — show them immediately
+      if (props.source === 'claude-vision' && props.ai_plants) {
+        try {
+          const plants = JSON.parse(props.ai_plants);
+          if (plants.length) setTimeout(() => showInstantPlantRecs(plants, props), 350);
+        } catch {}
+      }
     }
 
     function closeSidebar() {
@@ -2849,11 +3321,12 @@ For "model" field, pick the BEST visual match for this specific plant from: oak,
       }
     }
 
-    /* ─── RENDER RESULTS ─── */
+    /* ─── RENDER RESULTS (soil photo analysis flow) ─── */
     function renderAIResults(data, indices) {
       const panel = document.getElementById('ai-result-panel');
       const safe = (s) => String(s || '').replace(/['"<>]/g, '');
       const soil = data.soil_analysis || {};
+      const recs = data.recommendations || [];
       panel.innerHTML = `
         <div class="result-header">
           <h2>AI Soil Analysis</h2>
@@ -2871,23 +3344,117 @@ For "model" field, pick the BEST visual match for this specific plant from: oak,
         </div>
         <h3>Recommended Plants — Click to Place on Map</h3>
         <div class="tree-cards">
-          ${(data.recommendations||[]).map((tree,i)=>`
-            <div class="tree-card" onclick="plantTree(${i})" role="button" tabindex="0" aria-label="Plant ${safe(tree.common_name)}">
-              <div class="tree-card-top">
-                <div class="tree-number">${i+1}</div>
-                <div class="tree-info"><h4>${safe(tree.common_name)}</h4><em>${safe(tree.scientific_name)}</em></div>
-              </div>
-              <div class="tree-meta">
-                <span>${safe(tree.height)} · ${safe(tree.growth_rate)} growth</span>
-                <span>🌿 ${tree.co2_per_year_kg || '?'} kg CO₂/yr · 💰 $${tree.estimated_cost_usd || '?'}</span>
-                <span>🔧 ${safe(tree.maintenance_level)} maintenance · ⏱ ${safe(tree.time_to_maturity)}</span>
-              </div>
-              ${tree.soil_match ? `<p class="care-tip" style="color:var(--green);">✓ ${safe(tree.soil_match)}</p>` : ''}
-              <p class="care-tip">${safe(tree.care_tip)}</p>
-              <button class="plant-btn" onclick="event.stopPropagation();plantTree(${i})">↳ PLACE ON MAP</button>
-            </div>`).join('')}
+          ${recs.map((tree, i) => buildPlantCard(tree, i)).join('')}
         </div>`;
       panel.classList.add('open');
+      loadCardImages(recs);
+    }
+
+    /* ─── WIKIPEDIA PLANT IMAGE FETCHER ─── */
+    const _imgCache = {};
+    async function fetchPlantImage(scientificName) {
+      if (!scientificName) return null;
+      if (_imgCache[scientificName] !== undefined) return _imgCache[scientificName];
+      try {
+        const slug = encodeURIComponent(scientificName.trim().replace(/ /g, '_'));
+        const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const url = data.thumbnail?.source || null;
+        _imgCache[scientificName] = url;
+        return url;
+      } catch {
+        _imgCache[scientificName] = null;
+        return null;
+      }
+    }
+
+    // After cards are rendered, fetch images and inject them into placeholders
+    async function loadCardImages(recommendations) {
+      for (let i = 0; i < recommendations.length; i++) {
+        const scientific = recommendations[i].scientific_name;
+        if (!scientific) continue;
+        const imgEl = document.getElementById(`plant-img-${i}`);
+        if (!imgEl) continue;
+        const url = await fetchPlantImage(scientific);
+        if (url && imgEl) {
+          const img = document.createElement('img');
+          img.src = url;
+          img.className = 'tree-card-img';
+          img.alt = scientific;
+          img.onerror = () => { /* keep placeholder */ };
+          imgEl.replaceWith(img);
+        }
+      }
+    }
+
+    /* ─── BUILD PLANT CARD HTML (shared by both render functions) ─── */
+    function buildPlantCard(tree, i) {
+      const safe = (s) => String(s || '').replace(/['"<>]/g, '');
+      const emoji = plantEmoji(tree.model, tree.common_name);
+      return `
+        <div class="tree-card" onclick="plantTree(${i})" role="button" tabindex="0" aria-label="Plant ${safe(tree.common_name)}">
+          <div class="tree-card-img-placeholder" id="plant-img-${i}">${emoji}</div>
+          <div class="tree-card-body">
+            <div class="tree-card-top">
+              <div class="tree-number">${i + 1}</div>
+              <div class="tree-info">
+                <h4>${safe(tree.common_name)}</h4>
+                <em>${safe(tree.scientific_name)}</em>
+              </div>
+            </div>
+            <div class="tree-meta">
+              <span>🌿 ${tree.co2_per_year_kg || '?'} kg CO₂/yr</span>
+              ${tree.height && tree.height !== 'Varies by species' ? `<span>📏 ${safe(tree.height)}</span>` : ''}
+              <span>🔧 ${safe(tree.maintenance_level || 'Low–Medium')} maintenance</span>
+            </div>
+            <p class="care-tip" style="color:var(--green);">✓ ${safe(tree.soil_match || tree.care_tip)}</p>
+            <button class="plant-btn" onclick="event.stopPropagation();plantTree(${i})">↳ PLACE ON MAP</button>
+          </div>
+        </div>`;
+    }
+
+    /* ─── INSTANT PLANT RECS (Claude Vision zones — no photo upload needed) ─── */
+    function showInstantPlantRecs(plants, zoneInfo) {
+      const panel = document.getElementById('ai-result-panel');
+      const safe = (s) => String(s || '').replace(/['"<>]/g, '');
+
+      const recommendations = plants.map(p => ({
+        common_name: p.name,
+        scientific_name: p.scientific,
+        height: 'Varies by species',
+        growth_rate: 'Moderate',
+        co2_per_year_kg: p.co2_kg_yr || '?',
+        estimated_cost_usd: '—',
+        maintenance_level: 'Low–Medium',
+        time_to_maturity: '3–10 years',
+        soil_match: p.reason,
+        care_tip: p.reason,
+        model: p.model || 'oak'
+      }));
+      AppState.aiResults = { recommendations };
+
+      panel.innerHTML = `
+        <div class="result-header">
+          <h2>${safe(zoneInfo.name)}</h2>
+          <div class="soil-stats">
+            <span class="stat-chip">${safe((zoneInfo.type || '').replace(/_/g,' '))}</span>
+            <span class="stat-chip">${safe(zoneInfo.soil_type)}</span>
+            <span class="stat-chip">${safe(zoneInfo.sun_exposure)}</span>
+          </div>
+          <p class="location-note">${safe(zoneInfo.description)}</p>
+        </div>
+        <h3>AI Plant Suggestions — Click to Place on Map</h3>
+        <div class="tree-cards">
+          ${recommendations.map((t, i) => buildPlantCard(t, i)).join('')}
+        </div>
+        <p style="font-size:0.65rem;opacity:0.55;padding:8px 16px 16px;">
+          Want deeper analysis? Upload a soil photo above for full soil science + CO₂ rankings.
+        </p>`;
+      panel.classList.add('open');
+
+      // Async: load Wikipedia images into the placeholder divs
+      loadCardImages(recommendations);
     }
 
     function plantTree(index) {
@@ -2923,7 +3490,7 @@ For "model" field, pick the BEST visual match for this specific plant from: oak,
       ringEl.className = 'place-ring';
       ghostEl.appendChild(ringEl);
 
-      ghostMarker = new mapboxgl.Marker({ element: ghostEl, anchor: 'center' })
+      ghostMarker = new mapboxgl.Marker({ element: ghostEl, anchor: 'center', className: 'place-ghost-marker' })
         .setLngLat(map.getCenter())
         .addTo(map);
 
@@ -3121,74 +3688,37 @@ For "model" field, pick the BEST visual match for this specific plant from: oak,
       return root;
     }
 
-    function place3DTree(lng, lat, modelName, displayName) {
-      const mercator = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], 0);
-      const transform = {
-        translateX: mercator.x, translateY: mercator.y, translateZ: mercator.z,
-        rotateX: Math.PI / 2, rotateY: 0, rotateZ: 0,
-        scale: mercator.meterInMercatorCoordinateUnits() * 15
-      };
-      const layerId = `tree-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-      map.addLayer({
-        id: layerId, type: 'custom', renderingMode: '3d',
-        onAdd(map, gl) {
-          this.camera = new THREE.Camera();
-          this.scene  = new THREE.Scene();
-          this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-          const sun = new THREE.DirectionalLight(0xfff0cc, 1.1);
-          sun.position.set(0,-70,100).normalize();
-          this.scene.add(sun);
-          const tree = buildProceduralTree(modelName);
-          tree.scale.setScalar(0.01);
-          this.scene.add(tree);
-          this._tree = tree;
-          let t = 0;
-          const grow = setInterval(() => {
-            t = Math.min(t+0.032,1);
-            const e = t<0.5 ? 2*t*t : -1+(4-2*t)*t;
-            tree.scale.setScalar(e);
-            map.triggerRepaint();
-            if (t>=1) clearInterval(grow);
-          }, 20);
-          this.renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: true });
-          this.renderer.autoClear = false;
-          this._map = map;
-        },
-        render(gl, matrix) {
-          const rotX = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1,0,0), transform.rotateX);
-          const rotY = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0,1,0), transform.rotateY);
-          const rotZ = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0,0,1), transform.rotateZ);
-          const m = new THREE.Matrix4().fromArray(matrix);
-          const l = new THREE.Matrix4()
-            .makeTranslation(transform.translateX, transform.translateY, transform.translateZ)
-            .scale(new THREE.Vector3(transform.scale, -transform.scale, transform.scale))
-            .multiply(rotX).multiply(rotY).multiply(rotZ);
-          this.camera.projectionMatrix = m.multiply(l);
-          this.renderer.resetState();
-          this.renderer.render(this.scene, this.camera);
-          this._map.triggerRepaint();
-        }
-      });
-      AppState.placedTrees.push({ layerId, lng, lat, name: displayName, modelName });
+    /* ─── PLANT EMOJI LOOKUP ─── */
+    const PLANT_EMOJI = {
+      oak: '🌳', pine: '🌲', palm: '🌴', shrub: '🌿', grass: '🌾', cactus: '🌵',
+      willow: '🌳', mesquite: '🌳', palo: '🌳', agave: '🌵', default: '🌱'
+    };
+    function plantEmoji(modelName, commonName) {
+      if (!modelName && !commonName) return PLANT_EMOJI.default;
+      const key = (modelName || commonName || '').toLowerCase();
+      for (const [k, v] of Object.entries(PLANT_EMOJI)) { if (key.includes(k)) return v; }
+      return PLANT_EMOJI.default;
+    }
 
-      // Add a name label marker
-      const labelEl = document.createElement('div');
-      labelEl.style.cssText = `
-        font-family:var(--font-display);font-size:0.6rem;letter-spacing:0.08em;
-        background:var(--green);color:var(--bg);padding:3px 8px;
-        white-space:nowrap;pointer-events:none;
-        clip-path:polygon(0 0,calc(100% - 4px) 0,100% 4px,100% 100%,0 100%);
-        box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    function place3DTree(lng, lat, modelName, displayName) {
+      const emoji = plantEmoji(modelName, displayName);
+
+      const el = document.createElement('div');
+      el.className = 'placed-plant-marker';
+      el.innerHTML = `
+        <div class="placed-plant-emoji">${emoji}</div>
+        <div class="placed-plant-label">${(displayName || '').toUpperCase()}</div>
       `;
-      labelEl.textContent = displayName.toUpperCase();
-      const labelMarker = new mapboxgl.Marker({ element: labelEl, anchor: 'top', offset: [0, 8] })
+
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([lng, lat])
         .addTo(map);
-      AppState.placedTrees[AppState.placedTrees.length - 1].labelMarker = labelMarker;
+
+      AppState.placedTrees.push({ marker, lng, lat, name: displayName, modelName });
 
       const count = AppState.placedTrees.length;
       document.getElementById('trees-planted-count').textContent = `${count} TREE${count!==1?'S':''} PLACED`;
-      showToast(`${displayName.toUpperCase()} PLANTED — ${count} TREE${count!==1?'S':''} TODAY`);
+      showToast(`${(displayName||'PLANT').toUpperCase()} PLANTED — ${count} PLANT${count!==1?'S':''} TODAY`);
     }
 
     /* ─── TOAST ─── */
