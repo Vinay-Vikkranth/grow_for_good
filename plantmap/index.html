@@ -1064,6 +1064,11 @@
     }
     startGlobeRotation();
 
+    // Start BGM as soon as the page loads
+    initBGM();
+    setupLoopPoint();
+    if (!NatureEngine.audioMuted) fadeAudioIn();
+
     map.on('style.load', () => {
       AppState.mapReady = true;
 
@@ -1176,10 +1181,8 @@
       stopGlobeRotation();
       document.getElementById('intro-screen').classList.add('exiting');
 
-      // Start BGM right as the zoom begins
-      initBGM();
-      setupLoopPoint();
-      if (!NatureEngine.audioMuted) fadeAudioIn();
+      // Fade out BGM as we zoom in
+      fadeAudioOut();
 
       map.flyTo({ center: [lng, lat], zoom: 5, pitch: 20, duration: 2000, essential: true });
       setTimeout(() => {
@@ -1596,6 +1599,8 @@ For the "model" field use one of: oak, pine, maple, sapling`;
         document.getElementById('city-search-wrap').classList.remove('visible');
         document.getElementById('city-input').value = '';
         startGlobeRotation();
+        // Restart BGM on the globe screen
+        if (!NatureEngine.audioMuted) fadeAudioIn();
       }, 2600);
     }
 
@@ -1707,7 +1712,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
         fadeAudioOut();
       } else {
         btn.textContent = '🔊';
-        if (NatureEngine.active) fadeAudioIn();
+        fadeAudioIn();
       }
     }
 
@@ -1716,7 +1721,7 @@ For the "model" field use one of: oak, pine, maple, sapling`;
       const audio = NatureEngine.bgm;
       if (!audio) return;
       audio.addEventListener('ended', () => {
-        if (NatureEngine.active && !NatureEngine.audioMuted) {
+        if (!NatureEngine.audioMuted) {
           audio.currentTime = 22;
           audio.play().catch(() => {});
         }
